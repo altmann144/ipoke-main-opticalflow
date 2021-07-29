@@ -1,0 +1,38 @@
+architecture:
+  kernel_size: [2,3]
+  coupling_type: "conv"
+  num_steps: [1,1,1,2,2,2,3,3,3,4,4,4] #[1,1,1,2,2,2,3,3,3,4,4,4,5,5,5]
+  factor: 16
+  activation: "elu"
+  transform: "affine"
+  prior_transform: "affine"
+  use1x1: True
+  flow_in_channels: 32
+  flow_mid_channels: 128
+  # ----------------VAE config ---------------
+  deterministic: False
+  nf_in: 2
+  min_spatial_size: 8
+  nf_max: 16
+
+
+data:
+  spatial_size: [64, 64]
+
+training:
+  lr: 0.00002
+  weight_decay: 0
+  lr_scaling: True
+  lr_scaling_max_it: 500
+  custom_lr_decrease: True
+
+
+
+
+logging:
+  log_train_prog_at: 300
+  n_samples: 4
+  n_log_images: 2
+
+checkpoint:
+  VAE: "../vae/flowVAE.ckpt"

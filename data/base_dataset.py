@@ -303,7 +303,7 @@ class BaseDataset(Dataset):
         yield_ids = [int(np.random.choice(np.flatnonzero(self.datadict["vid"] == transfer_vid), 1))]
         for idx in yield_ids:
             img_path = self.datadict["img_path"][idx]
-            img = cv2.imread(img_path)
+            img = cv2.imread('/export/scratch/compvis/datasets/plants/processed_256_resized/'+'img_path')
             # image is read in BGR
             img = preprocess_image(img, swap_channels=True)
             if "spatial_size" in self.config:
@@ -405,9 +405,8 @@ class BaseDataset(Dataset):
 
         for i,idx in enumerate(yield_ids):
             faug = use_fb_aug and (i == 0 or i == len(yield_ids) - 1)
-
             img_path = self.datadict["img_path"][idx]
-            img = cv2.imread(img_path)
+            img = cv2.imread('/export/scratch/compvis/datasets/plants/processed_256_resized/'+img_path)
             img = preprocess_image(img, swap_channels=True)
             # image is read in BGR
             if self.use_lanczos and self.config["spatial_size"] == 64:
@@ -654,7 +653,7 @@ class BaseDataset(Dataset):
         # debug, this path seems to be erroneous
         # flow_path = "/export/data/ablattma/Datasets/plants/processed_crops/VID_0_3_1024x1024/prediction_3_28.flow.npy"
         try:
-            flow = np.load(flow_path)
+            flow = np.load('/export/scratch/compvis/datasets/plants/processed_256_resized/'+flow_path)
         except ValueError:
             try:
                 flow = np.load(flow_path,allow_pickle=True)

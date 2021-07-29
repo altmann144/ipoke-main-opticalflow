@@ -94,6 +94,7 @@ general:
   experiment: second_stage
   profiler: false
   seed: 42
+  test: false
 logging:
   log_train_prog_at: 200
   n_fvd_samples: 1000

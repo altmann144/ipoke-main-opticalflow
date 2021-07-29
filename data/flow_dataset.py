@@ -213,8 +213,8 @@ class PlantDataset(BaseDataset):
         self.min_frames = 5
         self.obj_weighting = True
 
-        self.metafilename = "meta"
-        self.datapath = "data/PlantDataset"
+        self.metafilename = "plants_256_resized_frange"
+        self.datapath = "/export/scratch/compvis/datasets/plants/processed_256_resized/"
 
     def _read_flows(self,data):
         read_flows = []
