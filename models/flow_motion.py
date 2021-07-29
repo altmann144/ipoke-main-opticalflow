@@ -91,7 +91,7 @@ class FlowMotion(pl.LightningModule):
         self.motion_model.setup(self.device)
 
     def forward_density_video(self, batch):
-        out, logdet = self.motion_model.forward_density(batch.transpose(1, 2))
+        out, logdet = self.motion_model.forward_density(batch)
         return out, logdet
 
     def forward(self, batch):
