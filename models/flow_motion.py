@@ -62,6 +62,8 @@ class FlowMotion(pl.LightningModule):
         self.VAE = FlowVAEFixed(config).eval()
         self.INN = UnsupervisedMaCowTransformer3(self.config["architecture"])
         motion_model = PokeMotionModelFixed
+        lr = config["training"]["lr"]
+
 
         # os.system('ln -s /export/scratch3/ablattma/ipoke logs')
         ckpt_path = '/export/scratch3/ablattma/ipoke/second_stage/ckpt/plants_64/0/'
@@ -87,19 +89,37 @@ class FlowMotion(pl.LightningModule):
         m, u = self.VAE.load_state_dict(new_state_dict, strict=False)
         assert len(m) == 0, "VAE state_dict is missing pretrained params"
         del checkpoint
+
+
+        self.apply_lr_scaling = "lr_scaling" in self.config["training"] and self.config["training"]["lr_scaling"]
+        if self.apply_lr_scaling:
+            end_it = self.config["training"]["lr_scaling_max_it"]
+
+            self.lr_scaling = partial(linear_var, start_it=0, end_it=end_it, start_val=0., end_val=lr, clip_min=0.,
+                                      clip_max=lr)
+        # configure custom lr decrease
+        self.custom_lr_decrease = self.config['training']['custom_lr_decrease']
+        if self.custom_lr_decrease:
+            start_it = 500  # 1000
+            self.lr_adaptation = partial(linear_var, start_it=start_it, end_it=100 * 1759, start_val=lr, end_val=0.,
+                                         clip_min=0.,
+                                         clip_max=lr)
+
         self.VAE.setup(self.device)
         self.motion_model.setup(self.device)
+        self.VAE.eval()
+        self.motion_model.eval()
 
     def forward_density_video(self, batch):
         out, logdet = self.motion_model.forward_density(batch)
         return out, logdet
 
-    def forward(self, batch):
+    def forward(self, batch): # for early testing purposes
         batch = batch
         out_hat, _ = self.forward_density_video(batch)
         out, logdet = self.forward_density(batch)
         loss, loss_dict = self.loss_func(out, logdet)
-        return loss + F.mse_loss(out, out_hat)
+        return loss + F.mse_loss(out, out_hat, reduction='sum')
 
     # def on_fit_start(self) -> None:
     #     self.VAE.setup(self.device)
@@ -122,12 +142,10 @@ class FlowMotion(pl.LightningModule):
         X = batch['flow']
         with torch.no_grad():
             encv, _, _ = self.VAE.encoder(X)
+            rand = torch.randn_like(encv).detach()
+            encv = torch.cat((encv, rand), 1)
 
         out, logdet = self.INN(encv.detach(), reverse=False)
-        rand = torch.randn_like(out).detach()
-        print(out.shape)
-        out = torch.cat((out, rand), 1)
-        print(out.shape)
 
         return out, logdet
 
@@ -142,10 +160,10 @@ class FlowMotion(pl.LightningModule):
 
     def training_step(self,batch, batch_idx):
 
-        out_hat = self.forward_density_video(batch)
+        out_hat, _ = self.forward_density_video(batch)
         out, logdet = self.forward_density(batch)
         loss, loss_dict = self.loss_func(out, logdet)
-        loss_recon = F.mse_loss(out, out_hat)
+        loss_recon = F.mse_loss(out, out_hat, reduction='sum')*0.01
         loss_dict['reconstruction loss'] = loss_recon
         loss += loss_recon
         loss_dict["flow_loss"] = loss
@@ -191,13 +209,17 @@ class FlowMotion(pl.LightningModule):
     def validation_step(self, batch, batch_id):
 
         with torch.no_grad():
+            out_hat, _ = self.forward_density_video(batch)
             out, logdet = self.forward_density(batch)
-
             loss, loss_dict = self.loss_func(out, logdet)
+            loss_recon = F.mse_loss(out, out_hat, reduction='sum')*0.01
+            loss_dict['reconstruction loss'] = loss_recon
+            loss += loss_recon
+            loss_dict["flow_loss"] = loss
 
             self.log_dict({"val/" + key: loss_dict[key] for key in loss_dict}, logger=True, on_epoch=True)
 
-        return {"loss": loss, "val-batch": batch, "batch_idx": batch_id, "loss_dict": loss_dict}
+        return {"loss": loss, "batch_idx": batch_id, "loss_dict": loss_dict}
 
     def on_train_batch_start(self, batch, batch_idx, dataloader_idx):
         if self.apply_lr_scaling and self.global_step <= self.config["training"]["lr_scaling_max_it"]:
@@ -268,23 +290,19 @@ if __name__ == '__main__':
         'zero_poke_amount': 12,
         'filter': 'all'}
 
-    datakeys = ['images', 'flow']
+    datakeys = ['images', 'flow', 'poke']
     with open('config/VAE_INN.yaml', 'r') as stream:
         config = yaml.safe_load(stream)
 
-    datamod = StaticDataModule(config_data, datakeys=datakeys)
+    datamod = StaticDataModule(config['data'], datakeys=datakeys)
     datamod.setup()
     flowmotion = FlowMotion(config).cuda()
 
-    # config_data = {'spatial_size': [64, 64],
-    #                'dataset': 'PlantDataset',
-    #                'max_frames': 10,
-    #                'batch_size': 16,
-    #                'n_workers': 1,
-    #                'yield_videos': True,
-    #                'split': 'official'}
     for idx, batch in enumerate(datamod.train_dataloader()):
-        print(flowmotion(batch))
         batch['images'] = batch['images'].cuda()
         batch['flow'] = batch['flow'].cuda()
+        batch['poke'][0] = batch['poke'][0].cuda()
+        batch['poke'][1] = batch['poke'][1].cuda()
+
+        print(flowmotion(batch))
         break

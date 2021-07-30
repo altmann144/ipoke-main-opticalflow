@@ -15,15 +15,39 @@ architecture:
   min_spatial_size: 8
   nf_max: 16
 
-
 data:
-  spatial_size: [64, 64]
+  aug_deg: 15
+  aug_trans: [0.1, 0.1]
+  augment_b: 0.4
+  augment_c: 0.5
+  augment_h: 0.15
+  augment_s: 0.4
+  augment_wo_dis: true
+  # batch_size: 40
+  dataset: PlantDataset
+  flow_weights: false
+  max_frames: 10
+  n_pokes: 5
+  n_workers: 12
+  normalize_flows: false
+  object_weighting: false
+  p_col: 0.8
+  p_geom: 0.8
+  poke_size: 5
+  scale_poke_to_res: true
+  spatial_size: [64,64]
+  split: official
+  val_obj_weighting: false
+  yield_videos: true
+  zero_poke: true
+  zero_poke_amount: 12
+  filter: all
 
 training:
-  lr: 0.00002
+  lr: 0.00005
   weight_decay: 0
   lr_scaling: True
-  lr_scaling_max_it: 500
+  lr_scaling_max_it: 250
   custom_lr_decrease: True
 
 
