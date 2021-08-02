@@ -76,3 +76,4 @@ if __name__ == '__main__':
         trainer.fit(model, datamod.train_dataloader(), datamod.val_dataloader())
         if not args.skip_save:
             trainer.save_checkpoint('flowmotion.ckpt')
+
