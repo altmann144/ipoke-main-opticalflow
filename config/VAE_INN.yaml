@@ -1,14 +1,29 @@
 architecture:
   kernel_size: [2,3]
   coupling_type: "conv"
-  num_steps: [1,1,1,2,2,2,3,3,3,4,4,4,5,5,5] #[1,1,1,2,2,2,3,3,3,4,4,4,5,5,5]
+  num_steps:
+    - 10
+    - 5
+    - 5
+    - 4
+    - 4
+    - 4
+    - 3
+    - 3
+    - 3
+    - 2
+    - 2
+    - 2
+    - 1
+    - 1
+    - 1
   factor: 16
   activation: "elu"
   transform: "affine"
   prior_transform: "affine"
-  use1x1: True
+  use1x1: False
   flow_in_channels: 32
-  flow_mid_channels: 128
+  flow_mid_channels: 1024 # = 32*64
   # ----------------VAE config ---------------
   deterministic: False
   nf_in: 2
@@ -59,4 +74,4 @@ logging:
   n_log_images: 2
 
 checkpoint:
-  VAE: "../vae/flowVAE.ckpt"
+  VAE: "/export/scratch/daltmann/flowmotion/flowVAE.ckpt"

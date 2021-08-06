@@ -33,6 +33,7 @@ if __name__ == '__main__':
     batch_size = args.batch_size
     gpus = args.gpus
     os.environ["CUDA_VISIBLE_DEVICES"] = str(gpus)
+    os.environ["WANDB_DIR"] = "/export/scratch/daltmann/flowmotion/wandb/"
     print('gpu training on ', str(gpus))
     config_path = args.config
     with open(config_path, 'r') as stream:
@@ -58,7 +59,7 @@ if __name__ == '__main__':
     # model
     model = FlowMotion
     if args.resume:
-        model = model.load_from_checkpoint('flowmotion.ckpt', strict=False, config=config)
+        model = model.load_from_checkpoint('wandb/flowmotion.ckpt', strict=False, config=config)
     else:
         model = FlowMotion(config)
     # Logger
@@ -70,10 +71,10 @@ if __name__ == '__main__':
     trainer = pl.Trainer(gpus=1, # int(1) = one gpu | [1] = '1' = gpu number 1
                          logger=wandb_logger,
                          max_epochs=args.epoch,
-                         default_root_dir='/export/home/daltmann/master_project/tmp/ipoke-main-optical-flow')
+                         default_root_dir='/export/home/daltmann/master_project/tmp/ipoke-main-opticalflow/wandb')
                          # resume_from_checkpoint='')
     if (args.resume) or (input("start from scratch? (y,n)") == 'y'):
         trainer.fit(model, datamod.train_dataloader(), datamod.val_dataloader())
         if not args.skip_save:
-            trainer.save_checkpoint('flowmotion.ckpt')
+            trainer.save_checkpoint('wandb/flowmotion.ckpt')
 

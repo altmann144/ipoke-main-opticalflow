@@ -70,7 +70,7 @@ class FlowMotion(pl.LightningModule):
         ckpt_path = 'logs/second_stage/ckpt/plants_64/0/'
         ckpt_path = glob(ckpt_path + '*.ckpt')
         print(ckpt_path)
-        assert len(ckpt_path) == 1, 'multiple checkpoints found for PokeMotionModel (i.e. second stage)'
+        assert len(ckpt_path) == 1, 'checkpoints error for PokeMotionModel (i.e. second stage)'
         ckpt_path = ckpt_path[0]
 
         config_path = 'config/pretrained_models/plants_64.yaml'
@@ -142,10 +142,11 @@ class FlowMotion(pl.LightningModule):
         X = batch['flow']
         with torch.no_grad():
             encv, _, _ = self.VAE.encoder(X)
-            rand = torch.randn_like(encv).detach()
+            rand = torch.randn_like(encv)
+            # rand = torch.zeros_like(encv)
             encv = torch.cat((encv, rand), 1)
 
-        out, logdet = self.INN(encv.detach(), reverse=False)
+        out, logdet = self.INN(encv, reverse=False)
 
         return out, logdet
 
@@ -163,7 +164,7 @@ class FlowMotion(pl.LightningModule):
         out_hat, _ = self.forward_density_video(batch)
         out, logdet = self.forward_density(batch)
         loss, loss_dict = self.loss_func(out, logdet)
-        loss_recon = F.mse_loss(out, out_hat, reduction='sum')*0.01
+        loss_recon = F.mse_loss(out, out_hat, reduction='sum')*0.002
         loss_dict['reconstruction loss'] = loss_recon
         loss += loss_recon
         loss_dict["flow_loss"] = loss
@@ -212,7 +213,7 @@ class FlowMotion(pl.LightningModule):
             out_hat, _ = self.forward_density_video(batch)
             out, logdet = self.forward_density(batch)
             loss, loss_dict = self.loss_func(out, logdet)
-            loss_recon = F.mse_loss(out, out_hat, reduction='sum')*0.01
+            loss_recon = F.mse_loss(out, out_hat, reduction='sum')*0.002
             loss_dict['reconstruction loss'] = loss_recon
             loss += loss_recon
             loss_dict["flow_loss"] = loss
@@ -253,7 +254,7 @@ def create_dir_structure(config, model_name):
 
 
     # model_name = config['model_name'] if model_name is None else model_name
-    structure = {subdir: os.path.join('logs_altmann',config["experiment"],subdir,model_name) for subdir in subdirs}
+    structure = {subdir: os.path.join('wandb/logs_altmann',config["experiment"],subdir,model_name) for subdir in subdirs}
     return structure
 
 
