@@ -69,7 +69,6 @@ class FlowMotion(pl.LightningModule):
         ckpt_path = '/export/scratch3/ablattma/ipoke/second_stage/ckpt/plants_64/0/'
         ckpt_path = 'logs/second_stage/ckpt/plants_64/0/'
         ckpt_path = glob(ckpt_path + '*.ckpt')
-        print(ckpt_path)
         assert len(ckpt_path) == 1, 'checkpoints error for PokeMotionModel (i.e. second stage)'
         ckpt_path = ckpt_path[0]
 
@@ -101,13 +100,13 @@ class FlowMotion(pl.LightningModule):
         self.custom_lr_decrease = self.config['training']['custom_lr_decrease']
         if self.custom_lr_decrease:
             start_it = 500  # 1000
-            self.lr_adaptation = partial(linear_var, start_it=start_it, end_it=100 * 1759, start_val=lr, end_val=0.,
+            self.lr_adaptation = partial(linear_var, start_it=start_it, end_it=1000 * 1759, start_val=lr, end_val=0.,
                                          clip_min=0.,
                                          clip_max=lr)
 
         self.VAE.setup(self.device)
-        self.motion_model.setup(self.device)
         self.VAE.eval()
+        self.motion_model.setup(self.device)
         self.motion_model.eval()
 
     def forward_density_video(self, batch):
@@ -119,7 +118,7 @@ class FlowMotion(pl.LightningModule):
         out_hat, _ = self.forward_density_video(batch)
         out, logdet = self.forward_density(batch)
         loss, loss_dict = self.loss_func(out, logdet)
-        return loss + F.mse_loss(out, out_hat, reduction='sum')
+        return loss  # + F.mse_loss(out, out_hat, reduction='sum')
 
     # def on_fit_start(self) -> None:
     #     self.VAE.setup(self.device)
@@ -130,10 +129,10 @@ class FlowMotion(pl.LightningModule):
         with torch.no_grad():
 
             for n in range(n_samples):
-                flow_input, _, _ = self.VAE.encoder(batch)
-                flow_input = torch.randn_like(flow_input).detach()
+                flow_input, _, _ = self.VAE.encoder(batch['flow'])
+                flow_input = torch.randn_like(torch.cat((flow_input, flow_input), 1)).detach()
                 out = self.INN(flow_input, reverse=True)
-                out = self.VAE.decoder([out], del_shape=False)
+                out = self.VAE.decoder([out[:,:16]], del_shape=False)
                 image_samples.append(out[:n_logged_imgs])
 
         return image_samples
@@ -164,7 +163,7 @@ class FlowMotion(pl.LightningModule):
         out_hat, _ = self.forward_density_video(batch)
         out, logdet = self.forward_density(batch)
         loss, loss_dict = self.loss_func(out, logdet)
-        loss_recon = F.mse_loss(out, out_hat, reduction='sum')*0.002
+        loss_recon = F.mse_loss(out, out_hat, reduction='sum')*0.01
         loss_dict['reconstruction loss'] = loss_recon
         loss += loss_recon
         loss_dict["flow_loss"] = loss
@@ -176,30 +175,27 @@ class FlowMotion(pl.LightningModule):
         lr = self.optimizers().param_groups[0]["lr"]
         self.log("learning_rate",lr,on_step=True,on_epoch=False,prog_bar=True,logger=True)
 
-        # if self.global_step % self.config["logging"]["log_train_prog_at"] == 0:
-        #     self.INN.eval()
-        #     n_samples = self.config["logging"]["n_samples"]
-        #     n_logged_imgs = self.config["logging"]["n_log_images"]
-        #     with torch.no_grad():
-        #         image_samples = self.forward_sample(batch,n_samples-1,n_logged_imgs)
-        #         tgt_imgs = batch[:n_logged_imgs]
-        #         image_samples.insert(0, tgt_imgs)
-        #
-        #         enc, *_ = self.VAE.encoder(tgt_imgs)
-        #         rec = self.VAE.decoder([enc], del_shape=False)
-        #         image_samples.insert(1, rec)
-        #         sample, _ = self.INN(enc)
-        #         returned = self.INN(sample, reverse=True)
-        #         dec_returned = self.VAE.decoder([returned], del_shape=False)
-        #         image_samples.insert(2, dec_returned)
-        #
-        #         captions = ["target", "rec","flow_rec"] + ["sample"] * (n_samples-1)
-        #     img = fig_matrix(image_samples, captions)
-        #
-        #     self.logger.experiment.history._step=self.global_step
-        #     self.logger.experiment.log({"Image Grid train set":wandb.Image(img,
-        #                                                         caption=f"Image Grid train @ it #{self.global_step}")}
-        #                                 ,step=self.global_step, commit=False)
+        if self.global_step % self.config["logging"]["log_train_prog_at"] == 0:
+            self.INN.eval()
+            n_samples = self.config["logging"]["n_samples"]
+            n_logged_imgs = self.config["logging"]["n_log_images"]
+            with torch.no_grad():
+                image_samples = self.forward_sample(batch,n_samples-1,n_logged_imgs)
+                tgt_imgs = batch['flow'][:n_logged_imgs]
+                image_samples.insert(0, tgt_imgs)
+
+                enc, *_ = self.VAE.encoder(tgt_imgs)
+                rec = self.VAE.decoder([enc], del_shape=False)
+                image_samples.insert(1, rec)
+
+                captions = ["target", "rec"] + ["sample"] * (n_samples - 1)
+                img = fig_matrix(image_samples, captions)
+
+            self.logger.experiment.history._step=self.global_step
+            self.logger.experiment.log({"Image Grid train set":wandb.Image(img,
+                                                                caption=f"Image Grid train @ it #{self.global_step}")}
+                                        ,step=self.global_step, commit=False)
+
         #     if self.global_step % (self.config["logging"]["log_train_prog_at"]*10) == 0:
         #         img = color_fig(image_samples, captions)
         #         self.logger.experiment.log({"Image sample": wandb.Image(img, caption=f"Image sample @ it #{self.global_step}")}
@@ -213,7 +209,7 @@ class FlowMotion(pl.LightningModule):
             out_hat, _ = self.forward_density_video(batch)
             out, logdet = self.forward_density(batch)
             loss, loss_dict = self.loss_func(out, logdet)
-            loss_recon = F.mse_loss(out, out_hat, reduction='sum')*0.002
+            loss_recon = F.mse_loss(out, out_hat, reduction='sum')*0.01
             loss_dict['reconstruction loss'] = loss_recon
             loss += loss_recon
             loss_dict["flow_loss"] = loss

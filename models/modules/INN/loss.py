@@ -11,7 +11,8 @@ class FlowLoss(nn.Module):
         self.logdet_weight = logdet_weight
 
     def forward(self, sample, logdet):
-        nll_loss = torch.mean(nll(sample, spatial_mean=self.spatial_mean))
+        # nll_loss = torch.mean(nll(sample, spatial_mean=self.spatial_mean))
+        nll_loss = 0
         assert len(logdet.shape) == 1
         if self.spatial_mean:
             h,w = sample.shape[-2:]

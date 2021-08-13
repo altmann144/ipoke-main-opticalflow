@@ -51,7 +51,8 @@ if __name__ == '__main__':
     #                         num_workers=len(gpus)*3,
     #                         pin_memory=True,
     #                         drop_last=True)
-    datakeys = ['images', 'flow', 'poke']
+    datakeys = ['flow']
+    datakeys += ['images', 'poke']
     config['data']['batch_size'] = batch_size
     datamod = StaticDataModule(config['data'], datakeys=datakeys)
     datamod.setup()
@@ -59,7 +60,7 @@ if __name__ == '__main__':
     # model
     model = FlowMotion
     if args.resume:
-        model = model.load_from_checkpoint('wandb/flowmotion.ckpt', strict=False, config=config)
+        model = model.load_from_checkpoint('wandb/flowmotion_2048.ckpt', strict=False, config=config)
     else:
         model = FlowMotion(config)
     # Logger
@@ -73,8 +74,8 @@ if __name__ == '__main__':
                          max_epochs=args.epoch,
                          default_root_dir='/export/home/daltmann/master_project/tmp/ipoke-main-opticalflow/wandb')
                          # resume_from_checkpoint='')
-    if (args.resume) or (input("start from scratch? (y,n)") == 'y'):
+    if (args.resume) or (input("start from scratch? (y,n) ") == 'y'):
         trainer.fit(model, datamod.train_dataloader(), datamod.val_dataloader())
         if not args.skip_save:
-            trainer.save_checkpoint('wandb/flowmotion.ckpt')
+            trainer.save_checkpoint('wandb/flowmotion_2048.ckpt')
 
