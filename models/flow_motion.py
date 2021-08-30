@@ -100,7 +100,7 @@ class FlowMotion(pl.LightningModule):
         self.custom_lr_decrease = self.config['training']['custom_lr_decrease']
         if self.custom_lr_decrease:
             start_it = 500  # 1000
-            self.lr_adaptation = partial(linear_var, start_it=start_it, end_it=1000 * 1759, start_val=lr, end_val=0.,
+            self.lr_adaptation = partial(linear_var, start_it=start_it, end_it=200 * 1759, start_val=lr, end_val=0.000001,
                                          clip_min=0.,
                                          clip_max=lr)
 
@@ -163,7 +163,7 @@ class FlowMotion(pl.LightningModule):
         out_hat, _ = self.forward_density_video(batch)
         out, logdet = self.forward_density(batch)
         loss, loss_dict = self.loss_func(out, logdet)
-        loss_recon = F.mse_loss(out, out_hat, reduction='sum')*0.01
+        loss_recon = F.smooth_l1_loss(out, out_hat, reduction='sum')
         loss_dict['reconstruction loss'] = loss_recon
         loss += loss_recon
         loss_dict["flow_loss"] = loss
@@ -209,7 +209,7 @@ class FlowMotion(pl.LightningModule):
             out_hat, _ = self.forward_density_video(batch)
             out, logdet = self.forward_density(batch)
             loss, loss_dict = self.loss_func(out, logdet)
-            loss_recon = F.mse_loss(out, out_hat, reduction='sum')*0.01
+            loss_recon = F.mse_loss(out, out_hat, reduction='sum')
             loss_dict['reconstruction loss'] = loss_recon
             loss += loss_recon
             loss_dict["flow_loss"] = loss
