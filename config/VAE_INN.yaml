@@ -59,7 +59,7 @@ data:
   filter: all
 
 training:
-  lr: 0.00001
+  lr: 0.000007
   weight_decay: 0
   lr_scaling: True
   lr_scaling_max_it: 500
@@ -72,6 +72,7 @@ logging:
   log_train_prog_at: 300
   n_samples: 4
   n_log_images: 2
+  n_val_img_batches: 2
 
 checkpoint:
   VAE: "/export/scratch/daltmann/flowmotion/flowVAE.ckpt"

@@ -37,16 +37,14 @@ def fig_matrix(batches: list, captions):
     return fig
 
 def color_fig(batches: list, captions):
-    assert "sample" in captions, 'no sample in captions'
-    fig, axes = plt.subplots(1, 1)
+    fig, axes = plt.subplots(3, len(captions))
     for i in range(len(captions)):
-        if captions[i] == 'sample':
-            images = batches[i].detach().cpu().numpy()
-            x = images[0]
+        images = batches[i].detach().cpu().numpy()
+        for j in range(3):
+            x = images[j]
             x[np.isnan(x)] = 0
             x = x.transpose([1, 2, 0])
             x = flow_vis.flow_to_color(x)
-            axes.imshow(x)
-            axes.title.set_text(captions[i])
-            break
+            axes[j,i].imshow(x)
+            axes[j,i].title.set_text(captions[i])
     return fig
