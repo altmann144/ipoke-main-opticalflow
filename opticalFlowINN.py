@@ -67,7 +67,7 @@ if __name__ == '__main__':
     wandb_logger = WandbLogger(project='flow to VAE to INN',
                                offline=args.offline,
                                notes=str(sys.argv),
-                               name='flow motion 32_8_8')
+                               name='flow motion 8+24_8_8')
     # training
     trainer = pl.Trainer(gpus=1, # int(1) = one gpu | [1] = '1' = gpu number 1
                          logger=wandb_logger,

@@ -60,6 +60,7 @@ class FlowMotion(pl.LightningModule):
         super(FlowMotion, self).__init__()
         self.config = config
         self.weight_recon = 0.1
+        self.nll_weight = 0.5
         self.VAE = FlowVAEFixed(config).eval()
         self.INN = UnsupervisedMaCowTransformer3(self.config["architecture"])
         motion_model = PokeMotionModelFixed
@@ -78,7 +79,7 @@ class FlowMotion(pl.LightningModule):
             config_motion = yaml.load(stream)
         self.dirs = create_dir_structure(config_motion['general'], 'flow_motion_16x8x8')
         self.motion_model = motion_model.load_from_checkpoint(ckpt_path, map_location="cpu", config=config_motion, strict=False, dirs=self.dirs)
-        self.loss_func = FlowLoss()
+        self.loss_func = FlowLoss(nll_weight=self.nll_weight)
 
         checkpoint = torch.load(config["checkpoint"]["VAE"], map_location='cpu')
         new_state_dict = OrderedDict()
@@ -131,9 +132,9 @@ class FlowMotion(pl.LightningModule):
 
             for n in range(n_samples):
                 flow_input, _, _ = self.VAE.encoder(batch['flow'])
-                flow_input = torch.randn_like(torch.cat((flow_input, flow_input), 1)).detach()
+                flow_input = torch.randn_like(torch.cat((flow_input, flow_input), 1)).detach() # FIXME n_channels
                 out = self.INN(flow_input, reverse=True)
-                out = self.VAE.decoder([out[:,:16]], del_shape=False)
+                out = self.VAE.decoder([out[:,:24]], del_shape=False)
                 image_samples.append(out[:n_logged_imgs])
 
         return image_samples
@@ -145,7 +146,7 @@ class FlowMotion(pl.LightningModule):
             for n in range(n_samples):
                 flow_input = x_hat.detach()
                 out = self.INN(flow_input, reverse=True)
-                out = self.VAE.decoder([out[:, :16]], del_shape=False)
+                out = self.VAE.decoder([out[:, :8]], del_shape=False)
                 optical_flow.append(out[:n_logged_imgs])
         return optical_flow
 
@@ -153,7 +154,7 @@ class FlowMotion(pl.LightningModule):
         X = batch['flow']
         with torch.no_grad():
             encv, _, _ = self.VAE.encoder(X)
-            other = torch.randn_like(encv)
+            other = torch.randn_like(torch.cat((encv, encv, encv), 1))
             # rand = torch.zeros_like(encv)
             encv = torch.cat((encv, other), 1)
 
@@ -175,9 +176,9 @@ class FlowMotion(pl.LightningModule):
         out_hat, _ = self.forward_density_video(batch)
         out, logdet = self.forward_density(batch)
         loss, loss_dict = self.loss_func(out, logdet)
-        loss_recon = F.smooth_l1_loss(out, out_hat, reduction='sum') * self.weight_recon
-        loss_dict['reconstruction loss'] = loss_recon
-        loss += loss_recon
+        loss_recon = F.smooth_l1_loss(out, out_hat, reduction='sum')
+        loss_dict['reconstruction loss'] = loss_recon.detach()
+        loss += loss_recon * self.weight_recon
         loss_dict["flow_loss"] = loss
 
         self.log_dict(loss_dict,prog_bar=True,on_step=True,logger=False)
@@ -192,16 +193,21 @@ class FlowMotion(pl.LightningModule):
             n_samples = self.config["logging"]["n_samples"]
             n_logged_imgs = self.config["logging"]["n_log_images"]
             with torch.no_grad():
-                image_samples = self.forward_sample(batch,n_samples-1,n_logged_imgs)
-                tgt_imgs = batch['flow'][:n_logged_imgs]
-                image_samples.insert(0, tgt_imgs)
-
-                enc, *_ = self.VAE.encoder(tgt_imgs)
-                rec = self.VAE.decoder([enc], del_shape=False)
-                image_samples.insert(1, rec)
-
-                captions = ["target", "rec"] + ["sample"] * (n_samples - 1)
-                img = fig_matrix(image_samples, captions)
+                # image_samples = self.forward_sample(batch,n_samples-1,n_logged_imgs)
+                # tgt_imgs = batch['flow'][:n_logged_imgs]
+                # image_samples.insert(0, tgt_imgs)
+                #
+                # enc, *_ = self.VAE.encoder(tgt_imgs)
+                # rec = self.VAE.decoder([enc], del_shape=False)
+                # image_samples.insert(1, rec)
+                #
+                # captions = ["target", "rec"] + ["sample"] * (n_samples - 1)
+                # img = fig_matrix(image_samples, captions)
+                optical_flow = self.forward_infer_optical_flow(out_hat, 2, 8)
+                tgt_imgs = batch['flow'][:8]
+                optical_flow.insert(0, tgt_imgs)
+                captions = ["target"] + ["sample"] * 2
+                img = fig_matrix(optical_flow, captions)
 
             self.logger.experiment.history._step=self.global_step
             self.logger.experiment.log({"Image Grid train set":wandb.Image(img,
@@ -221,16 +227,16 @@ class FlowMotion(pl.LightningModule):
             out_hat, _ = self.forward_density_video(batch)
             out, logdet = self.forward_density(batch)
             loss, loss_dict = self.loss_func(out, logdet)
-            loss_recon = F.smooth_l1_loss(out, out_hat, reduction='sum') * self.weight_recon
-            loss_dict['reconstruction loss'] = loss_recon
-            loss += loss_recon
+            loss_recon = F.smooth_l1_loss(out, out_hat, reduction='sum')
+            loss_dict['reconstruction loss'] = loss_recon.detach()
+            loss += loss_recon * self.weight_recon
             loss_dict["flow_loss"] = loss
             if batch_id < self.config["logging"]["n_val_img_batches"]:
-                optical_flow = self.forward_infer_optical_flow(out_hat, 2, 2)
-                tgt_imgs = batch['flow'][:2]
+                optical_flow = self.forward_infer_optical_flow(out_hat, 2, 8)
+                tgt_imgs = batch['flow'][:8]
                 optical_flow.insert(0, tgt_imgs)
-                captions = ["target"] + ["sample"] * 2
-                img = fig_matrix(optical_flow, captions)
+                captions = ["target"] + ["inference"]
+                img = fig_matrix(optical_flow[:2], captions)
 
                 self.logger.experiment.log({"Image Grid val set": wandb.Image(img,
                                                                                 caption=f"Image Grid val @ it #{self.global_step}")}

@@ -59,7 +59,7 @@ class FlowMotion(pl.LightningModule):
 
         super(FlowMotion, self).__init__()
         self.config = config
-        self.weight_recon = 0.1
+        self.weight_recon = 0.01
         self.VAE = FlowVAEFixed(config).eval()
         self.INN = UnsupervisedMaCowTransformer3(self.config["architecture"])
         motion_model = PokeMotionModelFixed
@@ -178,7 +178,7 @@ class FlowMotion(pl.LightningModule):
         out, logdet = self.forward_density(batch)
 
         loss, loss_dict = self.loss_func(out[:,16:], logdet)
-        loss_recon = F.mse_loss(out[:,:16], out_hat, reduction='sum') * self.weight_recon
+        loss_recon = F.smooth_l1_loss(out[:,:16], out_hat, reduction='sum') * self.weight_recon
         loss_dict['reconstruction loss'] = loss_recon
         loss += loss_recon
         loss_dict["flow_loss"] = loss
@@ -221,7 +221,7 @@ class FlowMotion(pl.LightningModule):
             out, logdet = self.forward_density(batch)
 
             loss, loss_dict = self.loss_func(out[:, 16:], logdet)
-            loss_recon = F.mse_loss(out[:, :16], out_hat, reduction='sum') * self.weight_recon
+            loss_recon = F.smooth_l1_loss(out[:, :16], out_hat, reduction='sum') * self.weight_recon
             loss_dict['reconstruction loss'] = loss_recon
             loss += loss_recon
             loss_dict["flow_loss"] = loss

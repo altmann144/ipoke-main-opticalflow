@@ -28,7 +28,7 @@ architecture:
   deterministic: False
   nf_in: 2
   min_spatial_size: 8
-  nf_max: 16
+  nf_max: 8
 
 data:
   aug_deg: 15
@@ -59,7 +59,7 @@ data:
   filter: all
 
 training:
-  lr: 0.000007
+  lr: 0.00005
   weight_decay: 0
   lr_scaling: True
   lr_scaling_max_it: 500
@@ -75,4 +75,4 @@ logging:
   n_val_img_batches: 2
 
 checkpoint:
-  VAE: "/export/scratch/daltmann/flowmotion/flowVAE.ckpt"
+  VAE: "/export/scratch/daltmann/flowmotion/flowVAE_8.ckpt"

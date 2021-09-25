@@ -4,15 +4,15 @@ from torch.distributions import Normal
 
 
 class FlowLoss(nn.Module):
-    def __init__(self,spatial_mean=False, logdet_weight=1.):
+    def __init__(self,spatial_mean=False, logdet_weight=1., nll_weight=1.):
         super().__init__()
         # self.config = config
         self.spatial_mean = spatial_mean
         self.logdet_weight = logdet_weight
+        self.nll_weight = nll_weight
 
     def forward(self, sample, logdet):
-        # nll_loss = torch.mean(nll(sample, spatial_mean=self.spatial_mean))
-        nll_loss = 0
+        nll_loss = torch.mean(nll(sample, spatial_mean=self.spatial_mean))
         assert len(logdet.shape) == 1
         if self.spatial_mean:
             h,w = sample.shape[-2:]
@@ -20,14 +20,15 @@ class FlowLoss(nn.Module):
         else:
             nlogdet_loss = -torch.mean(logdet)
 
-        loss = nll_loss + self.logdet_weight*nlogdet_loss
+        loss = self.nll_weight*nll_loss + self.logdet_weight*nlogdet_loss
         reference_nll_loss = torch.mean(nll(torch.randn_like(sample),spatial_mean=self.spatial_mean))
         log = {
-            "flow_loss": loss,
+            "flow_loss": loss.detach(),
             "reference_nll_loss": reference_nll_loss,
-            "nlogdet_loss": nlogdet_loss,
-            "nll_loss": nll_loss,
-            'logdet_weight': self.logdet_weight
+            "nlogdet_loss": nlogdet_loss.detach(),
+            "nll_loss": nll_loss.detach(),
+            'logdet_weight': self.logdet_weight,
+            'nll_weight' : self.nll_weight
         }
         return loss, log
 

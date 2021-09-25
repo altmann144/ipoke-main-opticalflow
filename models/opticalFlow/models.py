@@ -40,7 +40,7 @@ class ConvEncoder2(nn.Module):
 
         blocks = []
         bottleneck = []
-        nf = 16 if layers is None else layers[0]
+        nf = 128 if layers is None else layers[0]
         blocks.append(
             Conv2dBlock(
                 nf_in, nf, 3, 2, norm=norm_layer, activation=act, padding=1, snorm=spectral_norm

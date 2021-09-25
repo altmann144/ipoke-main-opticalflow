@@ -29,7 +29,7 @@ class Conv2dTransposeBlock(nn.Module):
         elif norm == "in":
             self.norm = nn.InstanceNorm2d(norm_dim)
         elif norm == "group":
-            self.norm = nn.GroupNorm(num_channels=norm_dim,num_groups=16)
+            self.norm = nn.GroupNorm(num_channels=norm_dim,num_groups=8)
         elif norm == "adain":
             self.norm = AdaptiveInstanceNorm2d(norm_dim)
         elif norm == "none":
@@ -227,7 +227,7 @@ class Conv2dBlock(nn.Module):
         elif norm == "in":
             self.norm = nn.InstanceNorm2d(norm_dim)
         elif norm == "group":
-            self.norm = nn.GroupNorm(num_channels=norm_dim,num_groups=16)
+            self.norm = nn.GroupNorm(num_channels=norm_dim,num_groups=8)
         elif norm == "adain":
             self.norm = AdaptiveInstanceNorm2d(norm_dim)
         elif norm == "none":

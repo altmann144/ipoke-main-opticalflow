@@ -24,7 +24,9 @@ def endpoint_error(gt, pred):
 def fig_matrix(batches: list, captions):
     n = len(batches)
     m = len(batches[0])
-    fig, axes = plt.subplots(m, n)
+    fig, axes = plt.subplots(m, n, sharex=True, sharey=True)
+    fig.set_figheight(16)
+    fig.set_figwidth(3)
     for i in range(n):
         images = batches[i].detach().cpu().numpy()
         for j in range(m):
@@ -33,7 +35,8 @@ def fig_matrix(batches: list, captions):
             x = x.transpose([1, 2, 0])
             x = flow_vis.flow_to_color(x)
             axes[j,i].imshow(x)
-            axes[j,i].title.set_text(captions[i])
+
+        axes[0,i].title.set_text(captions[i])
     return fig
 
 def color_fig(batches: list, captions):
