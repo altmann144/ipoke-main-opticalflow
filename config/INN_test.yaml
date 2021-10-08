@@ -2,28 +2,20 @@ architecture:
   kernel_size: [2,3]
   coupling_type: "conv"
   num_steps:
-    - 10
+    - 8
+    - 8
     - 5
     - 5
     - 4
     - 4
-    - 4
     - 3
-    - 3
-    - 3
-    - 2
-    - 2
-    - 2
-    - 1
-    - 1
-    - 1
-  factor: 16
+  factor: 8
   activation: "elu"
   transform: "affine"
   prior_transform: "affine"
   use1x1: False
-  flow_in_channels: 32
-  flow_mid_channels: 2048 # = 32*64
+  flow_in_channels: 8
+  flow_mid_channels: 1024 # = 32*64
   # ----------------VAE config ---------------
   deterministic: False
   nf_in: 2

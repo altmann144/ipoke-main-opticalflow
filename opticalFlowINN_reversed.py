@@ -60,7 +60,7 @@ if __name__ == '__main__':
     # model
     model = FlowMotion
     if args.resume:
-        model = model.load_from_checkpoint('wandb/flowmotion_reversed_2048.ckpt', strict=False, config=config)
+        model = model.load_from_checkpoint('wandb/flowmotion_reversed_1024.ckpt', strict=False, config=config)
     else:
         model = FlowMotion(config)
     # Logger
@@ -77,5 +77,5 @@ if __name__ == '__main__':
     if (args.resume) or (input("start from scratch? (y,n) ") == 'y'):
         trainer.fit(model, datamod.train_dataloader(), datamod.val_dataloader())
         if not args.skip_save:
-            trainer.save_checkpoint('wandb/flowmotion_reversed_2048.ckpt')
+            trainer.save_checkpoint('wandb/flowmotion_reversed_1024.ckpt')
 

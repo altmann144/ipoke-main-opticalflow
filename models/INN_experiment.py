@@ -59,16 +59,16 @@ class FlowMotion(pl.LightningModule):
 
         super(FlowMotion, self).__init__()
         self.config = config
-        self.weight_recon = 0.01
+        # self.weight_recon = 0.1
         self.nll_weight = 1
         self.VAE = FlowVAEFixed(config).eval()
         self.INN = UnsupervisedMaCowTransformer3(self.config["architecture"])
-        motion_model = PokeMotionModelFixed
+        self.logger.log(self.config)
+        # motion_model = PokeMotionModelFixed
         lr = config["training"]["lr"]
 
-
         # os.system('ln -s /export/scratch3/ablattma/ipoke logs')
-        ckpt_path = '/export/scratch3/ablattma/ipoke/second_stage/ckpt/plants_64/0/'
+        # ckpt_path = '/export/scratch3/ablattma/ipoke/second_stage/ckpt/plants_64/0/'
         ckpt_path = 'logs/second_stage/ckpt/plants_64/0/'
         ckpt_path = glob(ckpt_path + '*.ckpt')
         assert len(ckpt_path) == 1, 'checkpoints error for PokeMotionModel (i.e. second stage)'
@@ -78,7 +78,7 @@ class FlowMotion(pl.LightningModule):
         with open(config_path, 'r') as stream:
             config_motion = yaml.load(stream)
         self.dirs = create_dir_structure(config_motion['general'], 'flow_motion_16x8x8')
-        self.motion_model = motion_model.load_from_checkpoint(ckpt_path, map_location="cpu", config=config_motion, strict=False, dirs=self.dirs)
+        # self.motion_model = motion_model.load_from_checkpoint(ckpt_path, map_location="cpu", config=config_motion, strict=False, dirs=self.dirs)
         self.loss_func = FlowLoss(nll_weight=self.nll_weight)
 
         checkpoint = torch.load(config["checkpoint"]["VAE"], map_location='cpu')
@@ -102,25 +102,25 @@ class FlowMotion(pl.LightningModule):
         self.custom_lr_decrease = self.config['training']['custom_lr_decrease']
         if self.custom_lr_decrease:
             start_it = 500  # 1000
-            self.lr_adaptation = partial(linear_var, start_it=start_it, end_it=100000, start_val=lr, end_val=lr/10,
-                                         clip_min=0.,
+            self.lr_adaptation = partial(linear_var, start_it=start_it, end_it=50000, start_val=lr, end_val=0.,
+                                         clip_min=lr/10,
                                          clip_max=lr)
 
         self.VAE.setup(self.device)
         self.VAE.eval()
-        self.motion_model.setup(self.device)
-        self.motion_model.eval()
+        # self.motion_model.setup(self.device)
+        # self.motion_model.eval()
 
-    def forward_density_video(self, batch):
-        out, logdet = self.motion_model.forward_density(batch)
-        return out, logdet
+    # def forward_density_video(self, batch):
+    #     out, logdet = self.motion_model.forward_density(batch)
+    #     return out, logdet
 
-    def forward(self, batch): # for early testing purposes
-        batch = batch
-        out_hat, _ = self.forward_density_video(batch)
-        out, logdet = self.forward_density(batch)
-        loss, loss_dict = self.loss_func(out, logdet)
-        return loss  # + F.mse_loss(out, out_hat, reduction='sum')
+    # def forward(self, batch): # for early testing purposes
+    #     batch = batch
+    #     out_hat, _ = self.forward_density_video(batch)
+    #     out, logdet = self.forward_density(batch)
+    #     loss, loss_dict = self.loss_func(out, logdet)
+    #     return loss  # + F.mse_loss(out, out_hat, reduction='sum')
 
     # def on_fit_start(self) -> None:
     #     self.VAE.setup(self.device)
@@ -132,31 +132,31 @@ class FlowMotion(pl.LightningModule):
 
             for n in range(n_samples):
                 flow_input, _, _ = self.VAE.encoder(batch['flow'])
-                flow_input = torch.randn_like(torch.cat((flow_input, flow_input), 1)).detach() # FIXME n_channels
+                flow_input = torch.randn_like(flow_input).detach()
                 out = self.INN(flow_input, reverse=True)
-                out = self.VAE.decoder([out[:,:24]], del_shape=False)
+                out = self.VAE.decoder([out], del_shape=False)
                 image_samples.append(out[:n_logged_imgs])
 
         return image_samples
 
-    def forward_infer_optical_flow(self, x_hat, n_samples=1, n_logged_imgs=1):
-        optical_flow = []
-
-        with torch.no_grad():
-            for n in range(n_samples):
-                flow_input = x_hat.detach()
-                out = self.INN(flow_input, reverse=True)
-                out = self.VAE.decoder([out[:, :8]], del_shape=False)
-                optical_flow.append(out[:n_logged_imgs])
-        return optical_flow
+    # def forward_infer_optical_flow(self, x_hat, n_samples=1, n_logged_imgs=1):
+        # optical_flow = []
+        #
+        # with torch.no_grad():
+        #     for n in range(n_samples):
+        #         flow_input = x_hat.detach()
+        #         out = self.INN(flow_input, reverse=True)
+        #         out = self.VAE.decoder([out[:, :8]], del_shape=False)
+        #         optical_flow.append(out[:n_logged_imgs])
+        # return optical_flow
 
     def forward_density(self, batch):
         X = batch['flow']
         with torch.no_grad():
             encv, _, _ = self.VAE.encoder(X)
-            other = torch.randn_like(torch.cat((encv, encv, encv), 1))
+            # other = torch.randn_like(torch.cat((encv, encv, encv), 1))
             # rand = torch.zeros_like(encv)
-            encv = torch.cat((encv, other), 1)
+            # encv = torch.cat((encv, other), 1)
 
         out, logdet = self.INN(encv, reverse=False)
 
@@ -173,13 +173,13 @@ class FlowMotion(pl.LightningModule):
 
     def training_step(self,batch, batch_id):
 
-        out_hat, _ = self.forward_density_video(batch)
+        # out_hat, _ = self.forward_density_video(batch)
         out, logdet = self.forward_density(batch)
         loss, loss_dict = self.loss_func(out, logdet)
-        loss_recon = F.smooth_l1_loss(out, out_hat, reduction='sum')
-        loss_dict['reconstruction loss'] = loss_recon.detach()
-        loss += loss_recon * self.weight_recon
-        loss_dict["flow_loss"] = loss
+        # loss_recon = F.smooth_l1_loss(out, out_hat, reduction='sum')
+        # loss_dict['reconstruction loss'] = loss_recon.detach()
+        # loss += loss_recon * self.weight_recon
+        # loss_dict["flow_loss"] = loss
 
         self.log_dict(loss_dict,prog_bar=True,on_step=True,logger=False)
         self.log_dict({"train/"+key: loss_dict[key] for key in loss_dict},logger=True,on_epoch=True,on_step=True)
@@ -203,10 +203,10 @@ class FlowMotion(pl.LightningModule):
                 #
                 # captions = ["target", "rec"] + ["sample"] * (n_samples - 1)
                 # img = fig_matrix(image_samples, captions)
-                optical_flow = self.forward_infer_optical_flow(out_hat, 2, 8)
+                optical_flow = self.forward_sample(batch, 2, 8)
                 tgt_imgs = batch['flow'][:8]
                 optical_flow.insert(0, tgt_imgs)
-                captions = ["target"] + ["sample"] * 2
+                captions = ["ground truth"] + ["sample"] * 2
                 img = fig_matrix(optical_flow, captions)
 
             self.logger.experiment.history._step=self.global_step
@@ -224,19 +224,15 @@ class FlowMotion(pl.LightningModule):
     def validation_step(self, batch, batch_id):
 
         with torch.no_grad():
-            out_hat, _ = self.forward_density_video(batch)
             out, logdet = self.forward_density(batch)
             loss, loss_dict = self.loss_func(out, logdet)
-            loss_recon = F.smooth_l1_loss(out, out_hat, reduction='sum')
-            loss_dict['reconstruction loss'] = loss_recon.detach()
-            loss += loss_recon * self.weight_recon
-            loss_dict["flow_loss"] = loss
+
             if batch_id < self.config["logging"]["n_val_img_batches"]:
-                optical_flow = self.forward_infer_optical_flow(out_hat, 2, 8)
+                optical_flow = self.forward_sample(batch, 2, 8)
                 tgt_imgs = batch['flow'][:8]
                 optical_flow.insert(0, tgt_imgs)
-                captions = ["target"] + ["inference"]
-                img = fig_matrix(optical_flow[:2], captions)
+                captions = ["ground truth"] + ["sample"] * 2
+                img = fig_matrix(optical_flow, captions)
 
                 self.logger.experiment.log({"Image Grid val set": wandb.Image(img,
                                                                                 caption=f"Image Grid val @ it #{self.global_step}")}
@@ -266,12 +262,11 @@ class FlowMotion(pl.LightningModule):
         lr = self.optimizers().param_groups[0]["lr"]
         self.lr_adaptation = self.lr_adaptation = partial(linear_var,
                                                           start_it=self.global_step,
-                                                          end_it=self.global_step + 100000,
-                                                          start_val=lr * 0.9,
+                                                          end_it=self.global_step + 50000,
+                                                          start_val=lr * 0.95,
                                                           end_val=0.,
-                                                          clip_min=lr * 0.09,
-                                                          clip_max=lr * 0.9)
-
+                                                          clip_min=max(lr * 0.095, 1e-4),
+                                                          clip_max=lr * 0.95)
 
 
 def linear_var(
