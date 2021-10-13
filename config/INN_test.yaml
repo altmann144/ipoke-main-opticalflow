@@ -2,22 +2,22 @@ architecture:
   kernel_size: [2,3]
   coupling_type: "conv"
   num_steps:
-    - 8
+    - 20
     - 8
     - 5
     - 5
-    - 4
-    - 4
     - 3
+    - 3
+    - 1
   factor: 8
-  activation: "elu"
-  transform: "affine"
-  prior_transform: "affine"
-  use1x1: False
+  activation: elu
+  transform: affine
+  prior_transform: affine
+  use1x1: false
   flow_in_channels: 8
-  flow_mid_channels: 1024 # = 32*64
+  flow_mid_channels: 1536 # = 32*64
   # ----------------VAE config ---------------
-  deterministic: False
+  deterministic: false
   nf_in: 2
   min_spatial_size: 8
   nf_max: 8

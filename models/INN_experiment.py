@@ -61,9 +61,8 @@ class FlowMotion(pl.LightningModule):
         self.config = config
         # self.weight_recon = 0.1
         self.nll_weight = 1
-        self.VAE = FlowVAEFixed(config).eval()
+        self.VAE = FlowVAEFixed(config)
         self.INN = UnsupervisedMaCowTransformer3(self.config["architecture"])
-        self.logger.log(self.config)
         # motion_model = PokeMotionModelFixed
         lr = config["training"]["lr"]
 
@@ -102,9 +101,9 @@ class FlowMotion(pl.LightningModule):
         self.custom_lr_decrease = self.config['training']['custom_lr_decrease']
         if self.custom_lr_decrease:
             start_it = 500  # 1000
-            self.lr_adaptation = partial(linear_var, start_it=start_it, end_it=50000, start_val=lr, end_val=0.,
-                                         clip_min=lr/10,
-                                         clip_max=lr)
+            self.lr_adaptation = partial(linear_var, start_it=start_it, end_it=50000, start_val=lr, end_val=1e-4,
+                                         clip_min=1e-4,
+                                         clip_max=1)
 
         self.VAE.setup(self.device)
         self.VAE.eval()
@@ -258,15 +257,15 @@ class FlowMotion(pl.LightningModule):
             for pg in opt.param_groups:
                 pg["lr"] = lr
 
-    def on_epoch_start(self):
-        lr = self.optimizers().param_groups[0]["lr"]
-        self.lr_adaptation = self.lr_adaptation = partial(linear_var,
-                                                          start_it=self.global_step,
-                                                          end_it=self.global_step + 50000,
-                                                          start_val=lr * 0.95,
-                                                          end_val=0.,
-                                                          clip_min=max(lr * 0.095, 1e-4),
-                                                          clip_max=lr * 0.95)
+    # def on_epoch_start(self):
+    #     lr = self.optimizers().param_groups[0]["lr"]
+    #     self.lr_adaptation = self.lr_adaptation = partial(linear_var,
+    #                                                       start_it=self.global_step,
+    #                                                       end_it=self.global_step + 50000,
+    #                                                       start_val=lr * 0.95,
+    #                                                       end_val=0.,
+    #                                                       clip_min=max(lr * 0.095, 1e-4),
+    #                                                       clip_max=lr * 0.95)
 
 
 def linear_var(

@@ -59,19 +59,23 @@ if __name__ == '__main__':
 
 
     # Logger
+    num_steps = config['architecture']['num_steps']
+    hidden_ch = config['architecture']['flow_mid_channels']
     wandb_logger = WandbLogger(project='opticalFlowINN',
                                offline=args.offline,
                                notes=str(sys.argv),
-                               name='1024hidden')
+                               name=f"{''.join([str(value) + '-' for value in num_steps])}" + str(hidden_ch)
+                               )
     # training
     trainer = pl.Trainer(gpus=1, # int(1) = one gpu | [1] = '1' = gpu number 1
                          logger=wandb_logger,
                          max_epochs=args.epoch,
-                         default_root_dir='/export/home/daltmann/master_project/tmp/ipoke-main-opticalflow/INNtest')
+                         default_root_dir='/export/home/daltmann/master_project/tmp/ipoke-main-opticalflow/wandb/INNtest')
                          # resume_from_checkpoint='')
     if (args.resume) or (input("start from scratch? (y,n) ") == 'y'): # make sure new initialization is wanted
         # model
         model = FlowMotion
+        wandb_logger.experiment.log(config)
         if args.resume:
             model = model.load_from_checkpoint('wandb/INN_test.ckpt', strict=False, config=config)
         else:

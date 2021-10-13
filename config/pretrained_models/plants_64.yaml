@@ -48,7 +48,7 @@ architecture:
   - 1
   p_dropout: 0.0
   prior_transform: affine
-  reshape: none
+  reshape: noned
   scale: false
   scale_augmentation: true
   shift_augmentation: true
