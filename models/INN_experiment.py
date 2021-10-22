@@ -1,6 +1,6 @@
 from models.modules.INN.INN import UnsupervisedMaCowTransformer3
 from models.modules.INN.loss import FlowLoss
-from models.opticalFlow.models import FlowVAE
+from models.opticalFlow.models import FlowVAE3
 from models.second_stage_video import PokeMotionModel
 from utils.evaluation import color_fig, fig_matrix
 from functools import partial
@@ -35,7 +35,7 @@ class PokeMotionModelFixed(PokeMotionModel):
     def setup(self, device: torch.device):
         self.freeze()
 
-class FlowVAEFixed(FlowVAE):
+class FlowVAEFixed(FlowVAE3):
     def __init__(self, config):
         super(FlowVAEFixed, self).__init__(config)
 
@@ -60,7 +60,7 @@ class FlowMotion(pl.LightningModule):
         super(FlowMotion, self).__init__()
         self.config = config
         # self.weight_recon = 0.1
-        self.nll_weight = 1
+        self.nll_weight = config['training']['nll_weight'] if 'nll_weight' in config['training'] else 1
         self.VAE = FlowVAEFixed(config)
         self.INN = UnsupervisedMaCowTransformer3(self.config["architecture"])
         # motion_model = PokeMotionModelFixed

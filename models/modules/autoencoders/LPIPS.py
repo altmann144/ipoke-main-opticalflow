@@ -2,6 +2,8 @@
 
 import torch
 import torch.nn as nn
+from torch.nn import functional as F
+
 
 from models.modules.autoencoders.vgg16 import vgg16, normalize_tensor, spatial_average
 from models.modules.autoencoders.ckpt_util import get_ckpt_path
@@ -39,6 +41,10 @@ class LPIPS(nn.Module):
         return model
 
     def forward(self, input, target):
+        if input.shape[1] == 2:
+            input = F.pad(input, (0,0,0,0,0,1))
+            target = F.pad(target, (0,0,0,0,0,1))
+
         in0_input, in1_input = (self.scaling_layer(input), self.scaling_layer(target))
         outs0, outs1 = self.net(in0_input), self.net(in1_input)
         feats0, feats1, diffs = {}, {}, {}

@@ -1,0 +1,63 @@
+general:
+  run_name: BigGAN64-FC-512-resnet101-bn
+data:
+  aug_deg: 15
+  aug_trans: [0.1, 0.1]
+  augment_b: 0.4
+  augment_c: 0.5
+  augment_h: 0.15
+  augment_s: 0.4
+  augment_wo_dis: true
+#  batch_size: 40
+  dataset: PlantDataset
+  flow_weights: false
+  max_frames: 10
+  n_pokes: 5
+  n_workers: 12
+#  normalize_flows: false
+  object_weighting: false
+  p_col: 0.8
+  p_geom: 0.8
+  poke_size: 5
+  scale_poke_to_res: true
+  spatial_size: [64,64]
+  split: official
+  val_obj_weighting: false
+  yield_videos: false
+  zero_poke: true
+  zero_poke_amount: 12
+  filter: all
+
+training:
+  lr: 0.0002
+  weight_decay: 0
+  min_acc_batch_size: 3
+#  max_batches_per_epoch: 2000
+  max_val_batches: 200
+  profiler: False
+  n_epochs: 200
+  pretrain: 0
+  w_kl: 0.000001
+  val_every: 1500
+  forward_sample: False
+
+architecture:
+#  n_channels: 2
+  deterministic: False
+  pretrained: False
+  z_dim: 512
+  type: resnet101
+  norm: bn
+  pre_process: False
+  use_actnorm_in_dec: False
+  n_out_channels: 2
+  n_in_channels: 2
+  use_adain: False
+  norm_layer:
+
+
+logging:
+  n_val_img_batches: 4
+  log_train_prog_at: 300
+  n_saved_ckpt: 5
+  n_log_images: 8

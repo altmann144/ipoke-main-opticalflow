@@ -149,7 +149,7 @@ class ResnetEncoder(nn.Module):
 
         self.type = type_
         self.z_dim = z_dim
-        self.model = __possible_resnets[type_](pretrained=load_pretrained, norm_layer=norm_layer)
+        self.model = __possible_resnets[type_](pretrained=load_pretrained)
 
         normalize = torchvision.transforms.Normalize(mean=self.mean, std=self.std)
         self.image_transform = torchvision.transforms.Compose(

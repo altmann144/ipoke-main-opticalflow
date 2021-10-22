@@ -5,15 +5,15 @@ import argparse
 import torch
 import pytorch_lightning as pl
 import yaml
-from models.flow_motion_reversed import FlowMotion
+from experiments.fully_connected_ae import FCAEModel
 from data.datamodule import StaticDataModule
 import numpy as np
 import os
 
 def parse():
-    parser = argparse.ArgumentParser('convolutional VAE')
+    parser = argparse.ArgumentParser('Fully Connected VAE')
     parser.add_argument('-g', '--gpus', type=int, required=True, help='gpu/gpus to run on e.g. -g 5')
-    parser.add_argument('-c', '--config', default='config/VAE_INN.yaml', metavar='config_path')
+    parser.add_argument('-c', '--config', default='config/BigGanAE.yaml', metavar='config_path')
     parser.add_argument('-b', '--batch_size', type=int, default=10)
     parser.add_argument('-e', '--epoch', type=int, default=10, metavar='n_epochs')
     parser.add_argument('--offline', action='store_true', help='dont sync wandb logger')
@@ -27,13 +27,13 @@ if __name__ == '__main__':
     torch.manual_seed(42)
     torch.cuda.manual_seed(42)
 
-    with open('/export/scratch/compvis/datasets/plants/processed_256_resized/plants_dataset_daniel.p', 'rb') as infile:
-        data_frame = pickle.load(infile)
+    # with open('/export/scratch/compvis/datasets/plants/processed_256_resized/plants_dataset_daniel.p', 'rb') as infile:
+    #     data_frame = pickle.load(infile)
     args = parse()
     batch_size = args.batch_size
     gpus = args.gpus
     os.environ["CUDA_VISIBLE_DEVICES"] = str(gpus)
-    os.environ["WANDB_DIR"] = "/export/scratch/daltmann/flowmotion/wandb/"
+    os.environ["WANDB_DIR"] = "/export/data/daltmann/FCAEModel"
     print('gpu training on ', str(gpus))
     config_path = args.config
     with open(config_path, 'r') as stream:
@@ -52,30 +52,32 @@ if __name__ == '__main__':
     #                         pin_memory=True,
     #                         drop_last=True)
     datakeys = ['flow']
-    datakeys += ['images', 'poke']
+    # datakeys += ['poke']
     config['data']['batch_size'] = batch_size
     datamod = StaticDataModule(config['data'], datakeys=datakeys)
-    datamod.setup()
 
-    # model
-    model = FlowMotion
-    if args.resume:
-        model = model.load_from_checkpoint('wandb/flowmotion_reversed_1024.ckpt', strict=False, config=config)
-    else:
-        model = FlowMotion(config)
+
     # Logger
-    wandb_logger = WandbLogger(project='flow to VAE to INN',
+    wandb_logger = WandbLogger(project='Fully Connected BigGAN Autoencoder',
                                offline=args.offline,
                                notes=str(sys.argv),
-                               name='flow motion 32_8_8 reversed')
+                               name=config["general"]["run_name"]
+                               )
     # training
     trainer = pl.Trainer(gpus=1, # int(1) = one gpu | [1] = '1' = gpu number 1
                          logger=wandb_logger,
                          max_epochs=args.epoch,
-                         default_root_dir='/export/home/daltmann/master_project/tmp/ipoke-main-opticalflow/wandb')
+                         default_root_dir='/export/home/daltmann/master_project/tmp/ipoke-main-opticalflow/wandb/FCAEModel')
                          # resume_from_checkpoint='')
-    if (args.resume) or (input("start from scratch? (y,n) ") == 'y'):
+    if (args.resume) or (input("start from scratch? (y,n) ") == 'y'): # make sure new initialization is wanted
+        # model
+        model = FCAEModel
+        if args.resume:
+            model = model.load_from_checkpoint('wandb/FCAEModel.ckpt', strict=False, config=config)
+        else:
+            model = model(config)
+        datamod.setup()
         trainer.fit(model, datamod.train_dataloader(), datamod.val_dataloader())
         if not args.skip_save:
-            trainer.save_checkpoint('wandb/flowmotion_reversed_1024.ckpt')
+            trainer.save_checkpoint('wandb/FCAEModel.ckpt')
 
