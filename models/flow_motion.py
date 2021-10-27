@@ -76,7 +76,7 @@ class FlowMotion(pl.LightningModule):
 
         config_path = 'config/pretrained_models/plants_64.yaml'
         with open(config_path, 'r') as stream:
-            config_motion = yaml.load(stream)
+            config_motion = yaml.load(stream, Loader=yaml.FullLoader)
         self.dirs = create_dir_structure(config_motion['general'], 'flow_motion_16x8x8')
         self.motion_model = motion_model.load_from_checkpoint(ckpt_path, map_location="cpu", config=config_motion, strict=False, dirs=self.dirs)
         self.loss_func = FlowLoss(nll_weight=self.nll_weight)

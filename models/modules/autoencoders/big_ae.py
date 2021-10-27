@@ -32,7 +32,7 @@ class BigAE(nn.Module):
 
     def forward(self, input):
         p = self.encode(input)
-        img = self.decode(p.mode())
+        img = self.decode(p.sample())
         return img, p.mode(), p
 
     def get_last_layer(self):

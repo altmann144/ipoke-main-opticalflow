@@ -1,5 +1,6 @@
 general:
-  run_name: BigGAN64-FC-256-resnet101-bn
+  run_name: UnsupervisedTransformer3-FC-256-resnet101-bn
+  config_ae: config/BigGanAE.yaml
 data:
   aug_deg: 15
   aug_trans: [0.1, 0.1]
@@ -42,17 +43,9 @@ training:
   forward_sample: False
 
 architecture:
-#  n_channels: 2
-  deterministic: False
-  pretrained: False
-  z_dim: 256
-  type: resnet101
-  norm: bn
-  pre_process: False
-  use_actnorm_in_dec: False
-  n_out_channels: 2
-  n_in_channels: 2
-  use_adain: False
+  flow_mid_channels: 1024
+  flow_hidden_depth: 2
+  n_flows: 15
 
 logging:
   n_val_img_batches: 4
