@@ -249,6 +249,7 @@ class UnsupervisedTransformer2(nn.Module):
 
 class UnsupervisedTransformer3(nn.Module):
     """Data depended initialization"""
+    # changed to data independent!
 
     def __init__(self, **kwargs):
         super().__init__()
@@ -265,7 +266,7 @@ class UnsupervisedTransformer3(nn.Module):
             hidden_dim=mid_channels,
             hidden_depth=hidden_depth,
             n_flows=n_flows,
-            data_init=True
+            data_init=False
         )
 
     def sample(self, shape, device="cpu"):

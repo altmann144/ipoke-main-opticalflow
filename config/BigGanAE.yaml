@@ -1,5 +1,6 @@
 general:
   run_name: BigGAN64-FC-256-resnet101-bn
+  checkpoint_ae: /export/compvis-nfs/user/daltmann/scratch/FCAEModel_256.ckpt
 data:
   aug_deg: 15
   aug_trans: [0.1, 0.1]

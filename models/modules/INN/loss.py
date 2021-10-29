@@ -24,11 +24,11 @@ class FlowLoss(nn.Module):
         reference_nll_loss = torch.mean(nll(torch.randn_like(sample),spatial_mean=self.spatial_mean))
         log = {
             "flow_loss": loss.detach(),
-            "reference_nll_loss": reference_nll_loss,
+            "ref_nll_loss": reference_nll_loss,
             "nlogdet_loss": nlogdet_loss.detach(),
             "nll_loss": nll_loss.detach(),
-            'logdet_weight': self.logdet_weight,
-            'nll_weight' : self.nll_weight
+            'logdet_w': self.logdet_weight,
+            'nll_w' : self.nll_weight
         }
         return loss, log
 

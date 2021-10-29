@@ -22,6 +22,7 @@ def endpoint_error(gt, pred):
 
 
 def fig_matrix(batches: list, captions):
+    # remember to use plt.close('all') in lightning module
     n = len(batches)
     m = len(batches[0])
     fig, axes = plt.subplots(m, n, sharex=True, sharey=True)

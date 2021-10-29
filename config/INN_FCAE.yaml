@@ -30,25 +30,19 @@ data:
   filter: all
 
 training:
-  lr: 0.0002
+  lr: 0.001
+  lr_scaling: True
+  lr_scaling_max_it: 500
+  custom_lr_decrease: True
   weight_decay: 0
-  min_acc_batch_size: 3
-#  max_batches_per_epoch: 2000
-  max_val_batches: 200
-  profiler: False
-  n_epochs: 200
-  pretrain: 0
-  w_kl: 0.000001
-  val_every: 1500
-  forward_sample: False
 
 architecture:
-  flow_mid_channels: 1024
+  flow_mid_channels: 1536
   flow_hidden_depth: 2
-  n_flows: 15
+  n_flows: 20
 
 logging:
   n_val_img_batches: 4
   log_train_prog_at: 300
-  n_saved_ckpt: 5
+  n_saved_ckpt: 1
   n_log_images: 8
