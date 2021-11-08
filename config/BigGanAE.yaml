@@ -1,6 +1,6 @@
 general:
-  run_name: BigGAN64-FC-256-resnet101-bn
-  checkpoint_ae: /export/compvis-nfs/user/daltmann/scratch/FCAEModel_256.ckpt
+  run_name: BigGAN64-FC-1024-resnet101-bn
+  checkpoint_ae: /export/compvis-nfs/user/daltmann/scratch/FCAEModel_1024.ckpt # checkpoint for fixed BigGAN in 2nd stage
 data:
   aug_deg: 15
   aug_trans: [0.1, 0.1]
@@ -46,7 +46,7 @@ architecture:
 #  n_channels: 2
   deterministic: False
   pretrained: False
-  z_dim: 256
+  z_dim: 1024
   type: resnet101
   norm: bn
   pre_process: False

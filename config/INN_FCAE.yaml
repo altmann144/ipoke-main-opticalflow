@@ -1,5 +1,5 @@
 general:
-  run_name: UnsupervisedTransformer3-FC-256-resnet101-bn
+  run_name: UnsupervisedTransformer3-FC-1024-resnet101-bn
   config_ae: config/BigGanAE.yaml
 data:
   aug_deg: 15
@@ -37,9 +37,9 @@ training:
   weight_decay: 0
 
 architecture:
-  flow_mid_channels: 1536
+  flow_mid_channels: 1024
   flow_hidden_depth: 2
-  n_flows: 20
+  n_flows: 16
 
 logging:
   n_val_img_batches: 4

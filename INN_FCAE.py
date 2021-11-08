@@ -76,7 +76,7 @@ if __name__ == '__main__':
     trainer = pl.Trainer(gpus=1, # int(1) = one gpu | [1] = '1' = gpu number 1
                          logger=wandb_logger,
                          max_epochs=args.epoch,
-                         default_root_dir='/export/home/daltmann/master_project/tmp/ipoke-main-opticalflow/scratch/FCAEINNModel')
+                         default_root_dir='/export/compvis-nfs/user/daltmann/scratch/FCAEINNModel')
                          # resume_from_checkpoint='')
     if (args.resume) or (input("start from scratch? (y,n) ") == 'y'): # make sure new initialization is wanted
         # model
@@ -86,7 +86,13 @@ if __name__ == '__main__':
         else:
             model = model(config)
         datamod.setup()
+        # wandb_logger.experiment.__getattribute__('path')[7:] to clip 'altmann'
         trainer.fit(model, datamod.train_dataloader(), datamod.val_dataloader())
+        log_config = trainer.__getattribute__('default_root_dir')
+        log_config += wandb_logger.experiment.__getattribute__('path')[7:]
+        log_config += '/config.yaml'
+        with open(log_config, "w") as f:
+            yaml.dump(config, f, default_flow_style=False)
         if not args.skip_save:
             trainer.save_checkpoint(f'scratch/FCAEINNModel_{z_dim}_{batch_size}.ckpt')
 

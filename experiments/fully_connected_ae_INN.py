@@ -67,8 +67,8 @@ class FCAEINNModel(pl.LightningModule):
         self.custom_lr_decrease = self.config['training']['custom_lr_decrease']
         if self.custom_lr_decrease:
             start_it = 500  # 1000
-            self.lr_adaptation = partial(linear_var, start_it=start_it, end_it=50000, start_val=lr, end_val=1e-4,
-                                         clip_min=1e-4,
+            self.lr_adaptation = partial(linear_var, start_it=start_it, end_it=100000, start_val=lr, end_val=1e-5,
+                                         clip_min=1e-5,
                                          clip_max=1)
 
 
