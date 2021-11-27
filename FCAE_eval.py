@@ -12,19 +12,17 @@ import os
 import json
 
 def angular_error(gt, pred):
-    gt = np.array(gt)
-    pred = np.array(pred)
-    u, v = pred[0], pred[1]
-    u_gt, v_gt = gt[0], gt[1]
-    AE = np.arccos((1. + u*u_gt + v*v_gt)/(np.sqrt(1.+u**2+v**2)*np.sqrt(1.+u_gt**2+v_gt**2)))
+    gt = np.pad(gt, [[0,0],[0,1],[0,0],[0,0]], 'constant', constant_values=1)
+    pred = np.pad(pred, [[0,0],[0,1],[0,0],[0,0]], 'constant', constant_values=1)
+
+    # u, v = pred[0], pred[1]
+    # u_gt, v_gt = gt[0], gt[1]
+    # AE = np.arccos((1. + u*u_gt + v*v_gt)/(np.sqrt(1.+u**2+v**2)*np.sqrt(1.+u_gt**2+v_gt**2)))
+    AE = np.arccos(np.sum(gt*pred, axis=1)/(np.linalg.norm(gt, axis=1) * np.linalg.norm(pred, axis=1)))
     return AE
 
 def endpoint_error(gt, pred):
-    gt = np.array(gt)
-    pred = np.array(pred)
-    u, v = pred[0], pred[1]
-    u_gt, v_gt = gt[0], gt[1]
-    EE = np.sqrt((u-u_gt)**2 + (v-v_gt)**2)
+    EE = np.linalg.norm(gt-pred, axis=1)
     return EE
 
 class BigAEfixed(BigAE):
@@ -109,15 +107,20 @@ if __name__ == '__main__':
         for batch in datamod.val_dataloader():
             flow = batch['flow'].to(device)
             rec, _, _ = model(flow)
-            rec_cpu = rec.detach().cpu()
-            batch_cpu = flow.detach().cpu()
+            rec_cpu = np.array(rec.detach().cpu())
+            batch_cpu = np.array(flow.detach().cpu())
+
+
             AE = angular_error(batch_cpu, rec_cpu)
             EE = endpoint_error(batch_cpu, rec_cpu)
-            R_temp = AE[AE>2.5]
+            normalization = np.minimum(np.linalg.norm(rec_cpu,axis=1), np.linalg.norm(batch_cpu, axis=1))
+            normalization = np.minimum(normalization, np.zeros_like(normalization) + 1e-4)
+            NEE = EE/normalization
+            R_temp = AE[AE>2.5*np.pi/180]
             R[path]['angular_error']['2.5'] += [R_temp.size/AE.size]
-            R_temp = R_temp[R_temp>5.]
+            R_temp = R_temp[R_temp>5.*np.pi/180]
             R[path]['angular_error']['5.0'] += [R_temp.size/AE.size]
-            R_temp = R_temp[R_temp>10.]
+            R_temp = R_temp[R_temp>10.*np.pi/180]
             R[path]['angular_error']['10.0'] += [R_temp.size/AE.size]
 
             R_temp = EE[EE>0.5]
@@ -127,6 +130,12 @@ if __name__ == '__main__':
             R_temp = R_temp[R_temp>2.0]
             R[path]['endpoint_error']['2.0'] += [R_temp.size/EE.size]
 
+            R_temp = NEE[NEE>0.5]
+            R[path]['endpoint_error_normalized']['0.5'] += [R_temp.size/NEE.size]
+            R_temp = R_temp[R_temp>1.0]
+            R[path]['endpoint_error_normalized']['1.0'] += [R_temp.size/NEE.size]
+            R_temp = R_temp[R_temp>2.0]
+            R[path]['endpoint_error_normalized']['2.0'] += [R_temp.size/NEE.size]
         print(path)
         print(np.mean(R[path]['endpoint_error']['2.0']))
 

@@ -170,7 +170,8 @@ class FCAEModel(pl.LightningModule):
 
         log_dict = {"val/loss": loss,
                     "val/logvar": self.logvar.detach(),
-                     "val/nll_loss": nll_loss,
+                    "val/rec_loss": rec_loss,
+                    "val/nll_loss": nll_loss,
                     "val/kl_loss": kl_loss}
 
         self.log_dict(log_dict, logger=True, prog_bar=False,on_epoch=True)
