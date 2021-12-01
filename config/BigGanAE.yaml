@@ -1,6 +1,6 @@
 general:
   run_name: BigGAN64-FC-z_dim-resnet101-bn-lr1e-3
-  # checkpoint_ae: /export/compvis-nfs/user/daltmann/scratch/FCAEModel_1024.ckpt # checkpoint for fixed BigGAN in 2nd stage
+  checkpoint_ae: /export/compvis-nfs/user/daltmann/scratch/FCAEModel_256.ckpt # checkpoint for fixed BigGAN in 2nd stage
 data:
   aug_deg: 15
   aug_trans: [0.1, 0.1]
@@ -30,7 +30,7 @@ data:
   filter: all
 
 training:
-  lr: 0.001
+  lr: 0.0002
   weight_decay: 0
   min_acc_batch_size: 3
 #  max_batches_per_epoch: 2000
@@ -38,7 +38,7 @@ training:
   profiler: False
   n_epochs: 400
   pretrain: 0
-  w_kl: 0.0001
+  w_kl: 0.00001
   val_every: 1500
   forward_sample: False
 

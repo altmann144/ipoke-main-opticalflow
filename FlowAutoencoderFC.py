@@ -70,6 +70,11 @@ if __name__ == '__main__':
         model = model(config)
     datamod.setup()
     trainer.fit(model, datamod.train_dataloader(), datamod.val_dataloader())
+    log_config = trainer.__getattribute__('default_root_dir')
+    log_config += wandb_logger.experiment.__getattribute__('path')[7:]
+    log_config += '/config.yaml'
+    with open(log_config, "w") as f:
+        yaml.dump(config, f, default_flow_style=False)
     if not args.skip_save:
         trainer.save_checkpoint(f'scratch/FCAEModel_{z_dim}.ckpt')
 
