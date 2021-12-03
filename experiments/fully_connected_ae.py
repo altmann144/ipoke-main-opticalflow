@@ -111,7 +111,9 @@ class FCAEModel(pl.LightningModule):
 
         mean_rec_loss = rec_loss.mean()
         loss_dict = {"train/loss": loss, "train/d_loss":d_loss, "train/logvar": self.logvar.detach(), "train/nll_loss":nll_loss,
-                      "train/rec_loss": mean_rec_loss,"train/d_weight":d_weight, "train/disc_factor": disc_factor,"train/g_loss": g_loss, "train/logits_real": logits_real.mean(), "train/logits_fake": logits_fake.mean(),}
+                     "train/rec_loss": mean_rec_loss,"train/d_weight":d_weight, "train/disc_factor": disc_factor,
+                     "train/g_loss": g_loss, "train/logits_real": logits_real.mean(), "train/logits_fake": logits_fake.mean(),
+                     "train/p_mode": p_mode.mean().detach().cpu(),}
 
         self.log_dict(loss_dict,logger=True,on_epoch=True,on_step=True)
         #self.logger.experiment.log({k: loss_dict[k].item() if isinstance(loss_dict[k],torch.Tensor) else loss_dict[k] for k in loss_dict})
@@ -172,7 +174,8 @@ class FCAEModel(pl.LightningModule):
                     "val/logvar": self.logvar.detach(),
                     "val/rec_loss": rec_loss,
                     "val/nll_loss": nll_loss,
-                    "val/kl_loss": kl_loss}
+                    "val/kl_loss": kl_loss,
+                    "val/p_mode": p_mode.mean().detach().cpu()}
 
         self.log_dict(log_dict, logger=True, prog_bar=False,on_epoch=True)
 
