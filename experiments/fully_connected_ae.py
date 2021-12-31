@@ -7,14 +7,16 @@ import wandb
 from os import path
 import yaml
 
-from models.modules.autoencoders.baseline_fc_models import BaselineFCEncoder,BaselineFCGenerator
+# from models.modules.autoencoders.baseline_fc_models import BaselineFCEncoder,BaselineFCGenerator
 from models.modules.autoencoders.big_ae import BigAE
 from models.modules.autoencoders.LPIPS import LPIPS as PerceptualLoss
 from models.modules.discriminators.disc_utils import calculate_adaptive_weight, adopt_weight, hinge_d_loss
+from models.modules.discriminators.disc_utils import MinibatchDiscrimination
+
 from models.modules.discriminators.patchgan import define_D
 # from utils.metrics import LPIPS
 # from lpips import LPIPS as lpips_net
-from utils.logging import batches2flow_grid
+from utils.logging import batches2flow_grid, batches2image_grid
 
 class FCAEModel(pl.LightningModule):
 
@@ -45,7 +47,8 @@ class FCAEModel(pl.LightningModule):
         self.be_deterministic = self.config["architecture"]["deterministic"]
 
         # discriminator
-        self.discriminator = define_D(2, 64, netD='basic')
+        self.discriminator = define_D(config['architecture']['n_out_channels'] + 1, self.config["architecture"]["in_size"], netD='basic')
+        self.minibatch_disc = MinibatchDiscrimination(64*64*2, 64*64, 2, mean=True)
 
         # metrics
         # self.ssim = SSIM(
@@ -56,6 +59,12 @@ class FCAEModel(pl.LightningModule):
         #
         # self.lpips_metric = LPIPS()
 
+        if config['architecture']['n_out_channels'] == 2:
+            self.key = 'flow'
+            self.batches2visual_grid = batches2flow_grid
+        else:
+            self.key = 'images'
+            self.batches2visual_grid = batches2image_grid
     def setup(self, stage: str):
         assert isinstance(self.logger, WandbLogger)
         self.logger.watch(self,log=None)
@@ -65,22 +74,29 @@ class FCAEModel(pl.LightningModule):
         img, p_mode, p = self.ae(x)
         return img, p_mode, p
 
+    def discriminate(self, img):
+        img = self.minibatch_disc(img)
+        img = img.view(-1, self.config['architecture']['n_out_channels'] + 1, self.config["architecture"]["in_size"], self.config["architecture"]["in_size"])
+        x = self.discriminator(img)
+        return x
 
     def training_step(self,batch, batch_idx,optimizer_idx):
-        x = batch["flow"]
+        x = batch[self.key]
+        if self.key == 'images':
+            x = x[:, 0] # dataloader returns stacked imgs.append(img)
 
         (opt_g, opt_d) = self.optimizers()
 
         rec, p_mode, p = self(x)
         rec_loss = torch.abs(x.contiguous() - rec.contiguous())
 
-        p_loss = self.vgg_loss(x.contiguous(), rec.contiguous())
         # equal weighting of l1 and perceptual loss
+        p_loss = self.vgg_loss(x.contiguous(), rec.contiguous())
         rec_loss = rec_loss +  self.perc_weight * p_loss
-
+        #
         nll_loss = rec_loss / torch.exp(self.logvar) + self.logvar
         nll_loss = torch.sum(nll_loss) / nll_loss.shape[0]
-
+        #
         kl_loss = torch.mean(p.kl()) * self.kl_weight
 
         # generator update
@@ -91,20 +107,22 @@ class FCAEModel(pl.LightningModule):
                                              last_layer=list(self.ae.decoder.parameters())[-1])
 
         disc_factor = adopt_weight(self.disc_factor, self.current_epoch, threshold=self.disc_start)
-        loss = nll_loss  + d_weight * disc_factor * g_loss + kl_loss
+        # loss = nll_loss  + d_weight * disc_factor * g_loss + kl_loss
+        loss = d_weight * disc_factor * g_loss + kl_loss
 
 
         opt_g.zero_grad()
         self.manual_backward(loss,opt_g)
         opt_g.step()
+        for i in range(2):
+            logits_real = self.discriminate(x.contiguous().detach())
+            logits_fake = self.discriminate(rec.contiguous().detach())
 
-        logits_real = self.discriminator(x.contiguous().detach())
-        logits_fake = self.discriminator(rec.contiguous().detach())
+            disc_factor = adopt_weight(self.disc_factor, self.current_epoch, threshold=self.disc_start)
+            d_loss = 0.5 * disc_factor * hinge_d_loss(logits_real, logits_fake)
 
-        disc_factor = adopt_weight(self.disc_factor, self.current_epoch, threshold=self.disc_start)
-        d_loss = disc_factor * hinge_d_loss(logits_real, logits_fake)
-
-        if d_loss.item() > 0:
+            if d_loss.item() <= 0:
+                break
             opt_d.zero_grad()
             self.manual_backward(d_loss,opt_d)
             opt_d.step()
@@ -145,7 +163,7 @@ class FCAEModel(pl.LightningModule):
         if self.global_step % self.config["logging"]["log_train_prog_at"] == 0:
             imgs = [x.detach(), rec.detach()]
             captions = ["Targets", "Predictions"]
-            train_grid = batches2flow_grid(imgs, captions)
+            train_grid = self.batches2visual_grid(imgs, captions)
             self.logger.experiment.log({f"Train Batch": wandb.Image(train_grid,
                                                                     caption=f"Training Images @ it #{self.global_step}")},step=self.global_step)
 
@@ -153,9 +171,9 @@ class FCAEModel(pl.LightningModule):
         self.log("epoch",self.current_epoch)
 
     def validation_step(self, batch, batch_id):
-        # dataloader yields pair of images; here we consider only the last element of this pair
-        x = batch["flow"]
-
+        x = batch[self.key]
+        if self.key == 'images':
+            x = x[:, 0] # dataloader returns stacked imgs.append(img)
         rec, p_mode, p = self(x)
         rec_loss = torch.abs(x.contiguous() - rec.contiguous())
 
@@ -199,7 +217,7 @@ class FCAEModel(pl.LightningModule):
         if batch_id < self.config["logging"]["n_val_img_batches"]:
             imgs = [x[:self.n_logged_imgs].detach(),rec[:self.n_logged_imgs].detach()]
             captions = ["Targets", "Predictions"]
-            val_grid = batches2flow_grid(imgs,captions)
+            val_grid = self.batches2visual_grid(imgs,captions)
             self.logger.experiment.log({f"Validation Batch #{batch_id}" : wandb.Image(val_grid,
                                                                                       caption=f"Validation Images @ it {self.global_step}")},step=self.global_step
                                        )
@@ -212,7 +230,7 @@ class FCAEModel(pl.LightningModule):
         lr = self.config["training"]["lr"]
 
         opt_g = Adam(ae_params, lr = lr,weight_decay=self.config["training"]["weight_decay"])
-        opt_d = Adam(self.discriminator.parameters(),lr=self.config["training"]["lr"],
+        opt_d = Adam([self.discriminator.parameters(), self.minibatch_disc.parameters()],lr=self.config["training"]["lr"],
                      weight_decay=self.config["training"]["weight_decay"])
 
         # schedulers

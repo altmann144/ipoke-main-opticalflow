@@ -25,7 +25,7 @@ class BigAEfixed(BigAE):
             new_key = key[3:]  # trimming keys by removing "ae."
             new_state_dict[new_key] = value
         m, u = self.load_state_dict(new_state_dict, strict=False)
-        assert len(m) == 0, "BigAE state_dict is missing pretrained params"
+        assert len(m) == 0, f"BigAE state_dict is missing pretrained params: {m}"
         del checkpoint
 
     def train(self, mode: bool):

@@ -19,14 +19,14 @@ class BigAE(nn.Module):
             config.update({"n_out_channels": 3})
         self.encoder = ResnetEncoder(config)
         self.decoder = BigGANDecoderWrapper(config=config)
-        self.norm = nn.GroupNorm(num_groups=16, num_channels=config['z_dim'])
+        # self.norm = nn.GroupNorm(num_groups=16, num_channels=config['z_dim'])
 
     def encode(self, input):
         h = input
         h = self.encoder(h)
-        mean, logvar = torch.chunk(h, 2, dim=1)
-        mean = self.norm(mean)
-        h = torch.cat([mean, logvar], dim=1)
+        # mean, logvar = torch.chunk(h, 2, dim=1)
+        # mean = self.norm(mean)
+        # h = torch.cat([mean, logvar], dim=1)
         return DiagonalGaussianDistribution(h, deterministic=self.be_deterministic)
 
     def decode(self, input):
@@ -172,7 +172,7 @@ class ResnetEncoder(nn.Module):
 
         ###############################################################################################################
         ### Adding Groupnorm at the end of encoding
-        #self.norm_end = nn.GroupNorm(num_groups=16, num_channels=2*z_dim)
+        # self.norm_end = nn.GroupNorm(num_groups=16, num_channels=2*z_dim)
         ###############################################################################################################
 
     def forward(self, x):

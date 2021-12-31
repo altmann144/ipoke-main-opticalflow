@@ -90,56 +90,63 @@ if __name__ == '__main__':
 
     z_dim_list = [256, 512, 1024]
     R = {}
-    for z_dim in z_dim_list:
-        config['architecture']['z_dim'] = z_dim
-        path = f"scratch/FCAEModel_{z_dim}.ckpt"
-        config['architecture']['checkpoint_ae'] = path
-        R[path] = {'angular_error': {'2.5'  : [],
-                                      '5.0' : [],
-                                      '10.0': []},
-                   'endpoint_error': {'0.5' : [],
-                                      '1.0' : [],
-                                      '2.0' : []}}
-        model = BigAEfixed
-        model = model(config['architecture']).eval()
-        model.to(device)
+    loaders = {'validation': datamod.val_dataloader(),
+               'train': datamod.train_dataloader()}
 
-        for batch in datamod.val_dataloader():
-            flow = batch['flow'].to(device)
-            rec, _, _ = model(flow)
-            rec_cpu = np.array(rec.detach().cpu())
-            batch_cpu = np.array(flow.detach().cpu())
+    for loader_name, loader in loaders.items():
+        for z_dim in z_dim_list:
+            config['architecture']['z_dim'] = z_dim
+            path = f"scratch/FCAEModel_{z_dim}.ckpt"
+            config['architecture']['checkpoint_ae'] = path
+            R[path] = {'angular_error': {'2.5'  : [],
+                                          '5.0' : [],
+                                          '10.0': []},
+                       'endpoint_error': {'0.5' : [],
+                                          '1.0' : [],
+                                          '2.0' : []},
+                       'endpoint_error_normalized': {'0.5': [],
+                                          '1.0': [],
+                                          '2.0': []}
+                       }
+            model = BigAEfixed
+            model = model(config['architecture']).eval()
+            model.to(device)
+            for batch in loader:
+                flow = batch['flow'].to(device)
+                rec, _, _ = model(flow)
+                rec_cpu = np.array(rec.detach().cpu())
+                batch_cpu = np.array(flow.detach().cpu())
+
+                AE = angular_error(batch_cpu, rec_cpu)
+                EE = endpoint_error(batch_cpu, rec_cpu)
+                normalization = np.minimum(np.linalg.norm(rec_cpu,axis=1), np.linalg.norm(batch_cpu, axis=1))
+                normalization = np.minimum(normalization, np.zeros_like(normalization) + 1e-4)
+                NEE = EE/normalization
+                R_temp = AE[AE>2.5*np.pi/180]
+                R[path]['angular_error']['2.5'] += [R_temp.size/AE.size]
+                R_temp = R_temp[R_temp>5.*np.pi/180]
+                R[path]['angular_error']['5.0'] += [R_temp.size/AE.size]
+                R_temp = R_temp[R_temp>10.*np.pi/180]
+                R[path]['angular_error']['10.0'] += [R_temp.size/AE.size]
+
+                R_temp = EE[EE>0.5]
+                R[path]['endpoint_error']['0.5'] += [R_temp.size/EE.size]
+                R_temp = R_temp[R_temp>1.0]
+                R[path]['endpoint_error']['1.0'] += [R_temp.size/EE.size]
+                R_temp = R_temp[R_temp>2.0]
+                R[path]['endpoint_error']['2.0'] += [R_temp.size/EE.size]
+
+                R_temp = NEE[NEE>0.5]
+                R[path]['endpoint_error_normalized']['0.5'] += [R_temp.size/NEE.size]
+                R_temp = R_temp[R_temp>1.0]
+                R[path]['endpoint_error_normalized']['1.0'] += [R_temp.size/NEE.size]
+                R_temp = R_temp[R_temp>2.0]
+                R[path]['endpoint_error_normalized']['2.0'] += [R_temp.size/NEE.size]
+            print(path)
+            print(np.mean(R[path]['endpoint_error']['2.0']))
 
 
-            AE = angular_error(batch_cpu, rec_cpu)
-            EE = endpoint_error(batch_cpu, rec_cpu)
-            normalization = np.minimum(np.linalg.norm(rec_cpu,axis=1), np.linalg.norm(batch_cpu, axis=1))
-            normalization = np.minimum(normalization, np.zeros_like(normalization) + 1e-4)
-            NEE = EE/normalization
-            R_temp = AE[AE>2.5*np.pi/180]
-            R[path]['angular_error']['2.5'] += [R_temp.size/AE.size]
-            R_temp = R_temp[R_temp>5.*np.pi/180]
-            R[path]['angular_error']['5.0'] += [R_temp.size/AE.size]
-            R_temp = R_temp[R_temp>10.*np.pi/180]
-            R[path]['angular_error']['10.0'] += [R_temp.size/AE.size]
-
-            R_temp = EE[EE>0.5]
-            R[path]['endpoint_error']['0.5'] += [R_temp.size/EE.size]
-            R_temp = R_temp[R_temp>1.0]
-            R[path]['endpoint_error']['1.0'] += [R_temp.size/EE.size]
-            R_temp = R_temp[R_temp>2.0]
-            R[path]['endpoint_error']['2.0'] += [R_temp.size/EE.size]
-
-            R_temp = NEE[NEE>0.5]
-            R[path]['endpoint_error_normalized']['0.5'] += [R_temp.size/NEE.size]
-            R_temp = R_temp[R_temp>1.0]
-            R[path]['endpoint_error_normalized']['1.0'] += [R_temp.size/NEE.size]
-            R_temp = R_temp[R_temp>2.0]
-            R[path]['endpoint_error_normalized']['2.0'] += [R_temp.size/NEE.size]
-        print(path)
-        print(np.mean(R[path]['endpoint_error']['2.0']))
-
-    with open('scratch/FCAE_eval.json', 'w+') as f:
-        json.dump(R, f, indent=4)
+        with open(f'scratch/FCAE_eval_{loader_name}.json', 'w+') as f:
+            json.dump(R, f, indent=4)
     wandb_logger.experiment.log(R)
 
