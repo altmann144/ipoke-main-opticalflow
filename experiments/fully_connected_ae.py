@@ -11,7 +11,7 @@ import yaml
 from models.modules.autoencoders.big_ae import BigAE
 from models.modules.autoencoders.LPIPS import LPIPS as PerceptualLoss
 from models.modules.discriminators.disc_utils import calculate_adaptive_weight, adopt_weight, hinge_d_loss
-from models.modules.discriminators.disc_utils import MinibatchDiscrimination
+# from models.modules.discriminators.disc_utils import MinibatchDiscrimination
 
 from models.modules.discriminators.patchgan import define_D
 # from utils.metrics import LPIPS
@@ -47,8 +47,9 @@ class FCAEModel(pl.LightningModule):
         self.be_deterministic = self.config["architecture"]["deterministic"]
 
         # discriminator
-        self.discriminator = define_D(config['architecture']['n_out_channels'] + 1, self.config["architecture"]["in_size"], netD='basic')
-        self.minibatch_disc = MinibatchDiscrimination(64*64*2, 64*64, 2, mean=True)
+        self.discriminator = define_D(config['architecture']['n_out_channels'], self.config["architecture"]["in_size"], netD='n_layers', n_layers_D=2)
+        # self.minibatch_disc = MinibatchDiscrimination(self.config["architecture"]["in_size"]*self.config["architecture"]["in_size"]*config['architecture']['n_out_channels'],
+        #                                               self.config["architecture"]["in_size"]*self.config["architecture"]["in_size"], 2, mean=True)
 
         # metrics
         # self.ssim = SSIM(
@@ -75,8 +76,8 @@ class FCAEModel(pl.LightningModule):
         return img, p_mode, p
 
     def discriminate(self, img):
-        img = self.minibatch_disc(img)
-        img = img.view(-1, self.config['architecture']['n_out_channels'] + 1, self.config["architecture"]["in_size"], self.config["architecture"]["in_size"])
+        # img = self.minibatch_disc(img)
+        # img = img.view(-1, self.config['architecture']['n_out_channels'] + 1, self.config["architecture"]["in_size"], self.config["architecture"]["in_size"])
         x = self.discriminator(img)
         return x
 
@@ -100,7 +101,7 @@ class FCAEModel(pl.LightningModule):
         kl_loss = torch.mean(p.kl()) * self.kl_weight
 
         # generator update
-        logits_fake = self.discriminator(rec)
+        logits_fake = self.discriminate(rec)
         g_loss = -torch.mean(logits_fake)
 
         d_weight = calculate_adaptive_weight(nll_loss, g_loss, self.disc_weight,
@@ -114,12 +115,12 @@ class FCAEModel(pl.LightningModule):
         opt_g.zero_grad()
         self.manual_backward(loss,opt_g)
         opt_g.step()
-        for i in range(2):
+        for i in range(1):
             logits_real = self.discriminate(x.contiguous().detach())
             logits_fake = self.discriminate(rec.contiguous().detach())
 
             disc_factor = adopt_weight(self.disc_factor, self.current_epoch, threshold=self.disc_start)
-            d_loss = 0.5 * disc_factor * hinge_d_loss(logits_real, logits_fake)
+            d_loss = disc_factor * hinge_d_loss(logits_real, logits_fake)
 
             if d_loss.item() <= 0:
                 break
@@ -161,7 +162,7 @@ class FCAEModel(pl.LightningModule):
         #
 
         if self.global_step % self.config["logging"]["log_train_prog_at"] == 0:
-            imgs = [x.detach(), rec.detach()]
+            imgs = [x[:self.n_logged_imgs].detach(),rec[:self.n_logged_imgs].detach()]
             captions = ["Targets", "Predictions"]
             train_grid = self.batches2visual_grid(imgs, captions)
             self.logger.experiment.log({f"Train Batch": wandb.Image(train_grid,
@@ -230,8 +231,10 @@ class FCAEModel(pl.LightningModule):
         lr = self.config["training"]["lr"]
 
         opt_g = Adam(ae_params, lr = lr,weight_decay=self.config["training"]["weight_decay"])
-        opt_d = Adam([self.discriminator.parameters(), self.minibatch_disc.parameters()],lr=self.config["training"]["lr"],
-                     weight_decay=self.config["training"]["weight_decay"])
+        # params = list(self.discriminator.parameters())+ list(self.minibatch_disc.parameters())
+        params = list(self.discriminator.parameters())
+        opt_d = Adam(params,lr=self.config["training"]["lr"], weight_decay=self.config["training"]["weight_decay"])
+
 
         # schedulers
         sched_g = lr_scheduler.ReduceLROnPlateau(opt_g,mode="min",factor=.5,patience=0,min_lr=1e-8,

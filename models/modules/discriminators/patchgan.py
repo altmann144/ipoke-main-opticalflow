@@ -4,6 +4,7 @@ from torch.nn import init
 import functools
 from torch.optim import lr_scheduler
 from torch.nn.utils import spectral_norm
+from models.modules.discriminators.disc_utils import MinibatchDiscrimination
 
 
 ###############################################################################
@@ -255,13 +256,14 @@ def cal_gradient_penalty(netD, real_data, fake_data, type='mixed', constant=1.0,
 class NLayerDiscriminator(nn.Module):
     """Defines a PatchGAN discriminator"""
 
-    def __init__(self, input_nc, ndf=64, n_layers=3,gp_weight=10., norm_layer=nn.GroupNorm):
+    def __init__(self, input_nc, ndf=64, n_layers=3,gp_weight=10., norm_layer=nn.GroupNorm, minibatch_disc = False):
         """Construct a PatchGAN discriminator
         Parameters:
             input_nc (int)  -- the number of channels in input images
             ndf (int)       -- the number of filters in the last conv layer
             n_layers (int)  -- the number of conv layers in the discriminator
             norm_layer      -- normalization layer
+            minibatch_disc  -- allow for minibatch discrimination
         """
         super(NLayerDiscriminator, self).__init__()
         self.bce_loss = False
@@ -284,22 +286,38 @@ class NLayerDiscriminator(nn.Module):
                 norm_layer(num_channels=ndf * nf_mult, num_groups=16),
                 nn.LeakyReLU(0.2, True)
             ]
-
+        ###############################################################################################################
+        self.stage1 = nn.Sequential(*sequence)
+        sequence = []
+        width = 64
+        for layer in range(n_layers):
+            width = int((width - 4 + 2) / 2 + 1)
+        print(f'Discriminator intermediate w x h = {width} x {width}')
+        self.minibatch_disc = MinibatchDiscrimination(ndf * nf_mult * width**2, width**2, 3)
+        self.minibatch_disc_shape = [ndf * nf_mult + 1, width, width]
+        ##########
         nf_mult_prev = nf_mult
         nf_mult = min(2 ** n_layers, 8)
         sequence += [
-            spectral_norm(nn.Conv2d(ndf * nf_mult_prev, ndf * nf_mult, kernel_size=kw, stride=1, padding=padw,
+            spectral_norm(nn.Conv2d(ndf * nf_mult_prev + 1, ndf * nf_mult, kernel_size=kw, stride=1, padding=padw, # +1 input channels for minibatch discrimination
                                     bias=use_bias)),
             norm_layer(num_channels=ndf * nf_mult, num_groups=16),
             nn.LeakyReLU(0.2, True)
         ]
-
+        ###############################################################################################################
         sequence += [nn.Conv2d(ndf * nf_mult, 1, kernel_size=kw, stride=1, padding=padw)]  # output 1 channel prediction map
-        self.model = nn.Sequential(*sequence)
+        self.stage2 = nn.Sequential(*sequence)
+        width = int((width - 4 + 2) / 1 + 1)
+        width = int((width - 4 + 2) / 2 + 1)
+        print(f'Discriminator output w x h = {width} x {width}')
 
     def forward(self, input):
         """Standard forward."""
-        return self.model(input)
+        x = self.stage1(input)
+        x = self.minibatch_disc(x)
+        x = x.view(-1, self.minibatch_disc_shape[0], self.minibatch_disc_shape[1], self.minibatch_disc_shape[2])
+        x = self.stage2(x)
+        return x
 
     def loss(self, pred, real):
         if self.bce_loss:

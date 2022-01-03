@@ -1,5 +1,5 @@
 general:
-  run_name: BigGAN64-FC-z_dim-resnet101-bn-lr5e-4
+  run_name: BigGAN64-FC-z_dim-resnet101-bn-lr1e-3
 #  checkpoint_ae: /export/compvis-nfs/user/daltmann/scratch/FCAEModel_512.ckpt # checkpoint for fixed BigGAN in 2nd stage
 data:
   aug_deg: 15
@@ -59,4 +59,4 @@ logging:
   n_val_img_batches: 4
   log_train_prog_at: 300
   n_saved_ckpt: 5
-  n_log_images: 8
+  n_log_images: 4
