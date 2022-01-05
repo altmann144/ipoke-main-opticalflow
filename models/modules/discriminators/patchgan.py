@@ -286,37 +286,36 @@ class NLayerDiscriminator(nn.Module):
                 norm_layer(num_channels=ndf * nf_mult, num_groups=16),
                 nn.LeakyReLU(0.2, True)
             ]
-        ###############################################################################################################
-        self.stage1 = nn.Sequential(*sequence)
-        sequence = []
         width = 64
         for layer in range(n_layers):
             width = int((width - 4 + 2) / 2 + 1)
-        print(f'Discriminator intermediate w x h = {width} x {width}')
-        self.minibatch_disc = MinibatchDiscrimination(ndf * nf_mult * width**2, width**2, 3)
-        self.minibatch_disc_shape = [ndf * nf_mult + 1, width, width]
-        ##########
         nf_mult_prev = nf_mult
         nf_mult = min(2 ** n_layers, 8)
         sequence += [
-            spectral_norm(nn.Conv2d(ndf * nf_mult_prev + 1, ndf * nf_mult, kernel_size=kw, stride=1, padding=padw, # +1 input channels for minibatch discrimination
+            spectral_norm(nn.Conv2d(ndf * nf_mult_prev, ndf * nf_mult, kernel_size=kw, stride=1, padding=padw,
                                     bias=use_bias)),
             norm_layer(num_channels=ndf * nf_mult, num_groups=16),
             nn.LeakyReLU(0.2, True)
         ]
-        ###############################################################################################################
-        sequence += [nn.Conv2d(ndf * nf_mult, 1, kernel_size=kw, stride=1, padding=padw)]  # output 1 channel prediction map
-        self.stage2 = nn.Sequential(*sequence)
+        sequence += [spectral_norm(nn.Conv2d(ndf * nf_mult, 1, kernel_size=kw, stride=1, padding=padw)),
+                     nn.LeakyReLU(0.2, True)]  # output 1 channel prediction map
+        self.model = nn.Sequential(*sequence)
         width = int((width - 4 + 2) / 1 + 1)
-        width = int((width - 4 + 2) / 2 + 1)
+        width = int((width - 4 + 2) / 1 + 1)
         print(f'Discriminator output w x h = {width} x {width}')
+        self.minibatch_disc = MinibatchDiscrimination(width**2, width, width)
+        self.width = width
+        self.fc = nn.Linear(width**2 + width, width**2)
 
     def forward(self, input):
         """Standard forward."""
-        x = self.stage1(input)
+        # x = self.stage1(input)
+        # x = self.minibatch_disc(x)
+        # x = x.view(-1, self.minibatch_disc_shape[0], self.minibatch_disc_shape[1], self.minibatch_disc_shape[2])
+        x = self.model(input)
         x = self.minibatch_disc(x)
-        x = x.view(-1, self.minibatch_disc_shape[0], self.minibatch_disc_shape[1], self.minibatch_disc_shape[2])
-        x = self.stage2(x)
+        # print(self.width, self.width**2, self.width**2 + self.width, x.size())
+        x = self.fc(x)
         return x
 
     def loss(self, pred, real):

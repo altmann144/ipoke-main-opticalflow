@@ -33,7 +33,7 @@ class FCAEModel(pl.LightningModule):
         self.disc_start = self.config["training"]['pretrain']
         self.n_logged_imgs = self.config["logging"]["n_log_images"]
         self.config["architecture"]["in_size"] = self.config["data"]["spatial_size"][0]
-        self.vgg_loss = PerceptualLoss()
+        # self.vgg_loss = PerceptualLoss()
 
         # ae
         self.ae = BigAE(self.config["architecture"])
@@ -47,7 +47,7 @@ class FCAEModel(pl.LightningModule):
         self.be_deterministic = self.config["architecture"]["deterministic"]
 
         # discriminator
-        self.discriminator = define_D(config['architecture']['n_out_channels'], self.config["architecture"]["in_size"], netD='n_layers', n_layers_D=2)
+        self.discriminator = define_D(config['architecture']['n_out_channels'], self.config["architecture"]["in_size"], netD='n_layers', n_layers_D=3   )
         # self.minibatch_disc = MinibatchDiscrimination(self.config["architecture"]["in_size"]*self.config["architecture"]["in_size"]*config['architecture']['n_out_channels'],
         #                                               self.config["architecture"]["in_size"]*self.config["architecture"]["in_size"], 2, mean=True)
 
@@ -92,8 +92,8 @@ class FCAEModel(pl.LightningModule):
         rec_loss = torch.abs(x.contiguous() - rec.contiguous())
 
         # equal weighting of l1 and perceptual loss
-        p_loss = self.vgg_loss(x.contiguous(), rec.contiguous())
-        rec_loss = rec_loss +  self.perc_weight * p_loss
+        # p_loss = self.vgg_loss(x.contiguous(), rec.contiguous())
+        # rec_loss = rec_loss +  self.perc_weight * p_loss
         #
         nll_loss = rec_loss / torch.exp(self.logvar) + self.logvar
         nll_loss = torch.sum(nll_loss) / nll_loss.shape[0]
@@ -104,18 +104,18 @@ class FCAEModel(pl.LightningModule):
         logits_fake = self.discriminate(rec)
         g_loss = -torch.mean(logits_fake)
 
-        d_weight = calculate_adaptive_weight(nll_loss, g_loss, self.disc_weight,
-                                             last_layer=list(self.ae.decoder.parameters())[-1])
-
+        # d_weight = calculate_adaptive_weight(nll_loss, g_loss, self.disc_weight,
+        #                                      last_layer=list(self.ae.decoder.parameters())[-1])
+        d_weight = 100.
         disc_factor = adopt_weight(self.disc_factor, self.current_epoch, threshold=self.disc_start)
         # loss = nll_loss  + d_weight * disc_factor * g_loss + kl_loss
-        loss = d_weight * disc_factor * g_loss + kl_loss
+        loss = nll_loss + d_weight * disc_factor * g_loss + kl_loss
 
 
         opt_g.zero_grad()
         self.manual_backward(loss,opt_g)
         opt_g.step()
-        for i in range(1):
+        for i in range(2):
             logits_real = self.discriminate(x.contiguous().detach())
             logits_fake = self.discriminate(rec.contiguous().detach())
 
@@ -132,7 +132,7 @@ class FCAEModel(pl.LightningModule):
         loss_dict = {"train/loss": loss, "train/d_loss":d_loss, "train/logvar": self.logvar.detach(), "train/nll_loss":nll_loss,
                      "train/rec_loss": mean_rec_loss,"train/d_weight":d_weight, "train/disc_factor": disc_factor,
                      "train/g_loss": g_loss, "train/logits_real": logits_real.mean(), "train/logits_fake": logits_fake.mean(),
-                     "train/p_mode": p_mode.mean().detach().cpu(),}
+                     "train/p_mode": p_mode.mean().detach().cpu(), "train/kl_loss": kl_loss,}
 
         self.log_dict(loss_dict,logger=True,on_epoch=True,on_step=True)
         #self.logger.experiment.log({k: loss_dict[k].item() if isinstance(loss_dict[k],torch.Tensor) else loss_dict[k] for k in loss_dict})
@@ -178,9 +178,9 @@ class FCAEModel(pl.LightningModule):
         rec, p_mode, p = self(x)
         rec_loss = torch.abs(x.contiguous() - rec.contiguous())
 
-        p_loss = self.vgg_loss(x.contiguous(), rec.contiguous())
+        # p_loss = self.vgg_loss(x.contiguous(), rec.contiguous())
         # equal weighting of l1 and perceptual loss
-        rec_loss = rec_loss + self.perc_weight * p_loss
+        # rec_loss = rec_loss + self.perc_weight * p_loss
 
         nll_loss = rec_loss / torch.exp(self.logvar) + self.logvar
         nll_loss = torch.sum(nll_loss) / nll_loss.shape[0]
@@ -191,7 +191,7 @@ class FCAEModel(pl.LightningModule):
 
         log_dict = {"val/loss": loss,
                     "val/logvar": self.logvar.detach(),
-                    "val/rec_loss": rec_loss,
+                    "val/rec_loss": rec_loss.mean(),
                     "val/nll_loss": nll_loss,
                     "val/kl_loss": kl_loss,
                     "val/p_mode": p_mode.mean().detach().cpu()}

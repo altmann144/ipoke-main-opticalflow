@@ -1,5 +1,5 @@
 general:
-  run_name: BigGAN64-FC-z_dim-resnet101-bn-lr1e-3
+  run_name: BigGAN64-FC-z_dim-resnet50-bn-lr5e-4-nll_loss
 #  checkpoint_ae: /export/compvis-nfs/user/daltmann/scratch/FCAEModel_512.ckpt # checkpoint for fixed BigGAN in 2nd stage
 data:
   aug_deg: 15
@@ -47,7 +47,7 @@ architecture:
   deterministic: False
   pretrained: False
   z_dim: 256
-  type: resnet101
+  type: resnet50
   norm: bn
   pre_process: False
   use_actnorm_in_dec: False
