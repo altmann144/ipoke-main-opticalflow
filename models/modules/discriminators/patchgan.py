@@ -4,7 +4,7 @@ from torch.nn import init
 import functools
 from torch.optim import lr_scheduler
 from torch.nn.utils import spectral_norm
-from models.modules.discriminators.disc_utils import MinibatchDiscrimination
+# from models.modules.discriminators.disc_utils import MinibatchDiscrimination
 
 
 ###############################################################################
@@ -256,11 +256,11 @@ def cal_gradient_penalty(netD, real_data, fake_data, type='mixed', constant=1.0,
 class NLayerDiscriminator(nn.Module):
     """Defines a PatchGAN discriminator"""
 
-    def __init__(self, input_nc, ndf=64, n_layers=3,gp_weight=10., norm_layer=nn.GroupNorm, minibatch_disc = False):
+    def __init__(self, input_nc, ndf=64, n_layers=3,gp_weight=10., norm_layer=nn.GroupNorm):
         """Construct a PatchGAN discriminator
         Parameters:
             input_nc (int)  -- the number of channels in input images
-            ndf (int)       -- the number of filters in the last conv layer
+            ndf (int)       -- the number of filters in the first conv layer
             n_layers (int)  -- the number of conv layers in the discriminator
             norm_layer      -- normalization layer
             minibatch_disc  -- allow for minibatch discrimination

@@ -32,7 +32,7 @@ class FCAEModel(pl.LightningModule):
         self.logvar = nn.Parameter(torch.ones(size=()) * 0.0)
         self.disc_start = self.config["training"]['pretrain']
         self.n_logged_imgs = self.config["logging"]["n_log_images"]
-        self.config["architecture"]["in_size"] = max(self.config["data"]["spatial_size"][0], 64)
+        self.config["architecture"]["in_size"] = self.config["data"]["spatial_size"][0]
         self.vgg_loss = PerceptualLoss()
 
         # ae
@@ -47,7 +47,7 @@ class FCAEModel(pl.LightningModule):
         self.be_deterministic = self.config["architecture"]["deterministic"]
 
         # discriminator
-        self.discriminator = define_D(config['architecture']['n_out_channels'], self.config["architecture"]["in_size"], netD='n_layers', n_layers_D=3)
+        self.discriminator = define_D(config['architecture']['n_out_channels'], 64, netD='basic')
         # self.minibatch_disc = MinibatchDiscrimination(self.config["architecture"]["in_size"]*self.config["architecture"]["in_size"]*config['architecture']['n_out_channels'],
         #                                               self.config["architecture"]["in_size"]*self.config["architecture"]["in_size"], 2, mean=True)
 
@@ -115,7 +115,7 @@ class FCAEModel(pl.LightningModule):
         opt_g.zero_grad()
         self.manual_backward(loss,opt_g)
         opt_g.step()
-        for i in range(2):
+        for i in range(1):
             logits_real = self.discriminate(x.contiguous().detach())
             logits_fake = self.discriminate(rec.contiguous().detach())
 
@@ -231,8 +231,8 @@ class FCAEModel(pl.LightningModule):
 
         opt_g = Adam(ae_params, lr = lr,weight_decay=self.config["training"]["weight_decay"])
         # params = list(self.discriminator.parameters())+ list(self.minibatch_disc.parameters())
-        params = list(self.discriminator.parameters())
-        opt_d = Adam(params,lr=self.config["training"]["lr"], weight_decay=self.config["training"]["weight_decay"])
+        disc_params = list(self.discriminator.parameters())
+        opt_d = Adam(disc_params,lr=self.config["training"]["lr"], weight_decay=self.config["training"]["weight_decay"])
 
 
         # schedulers
