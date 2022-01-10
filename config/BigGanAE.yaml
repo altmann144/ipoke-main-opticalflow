@@ -1,5 +1,5 @@
 general:
-  run_name: BigGAN64-FC-z_dim-resnet101-bn-lr2e-4-mean_norm
+  run_name: BigGAN256-FC-z_dim-resnet101-bn-lr2e-4-mean_norm
   checkpoint_ae: /export/compvis-nfs/user/daltmann/scratch/FCAEModel_512.ckpt # checkpoint for fixed BigGAN in 2nd stage
 data:
   aug_deg: 15
@@ -21,7 +21,7 @@ data:
   p_geom: 0.8
   poke_size: 5
   scale_poke_to_res: true
-  spatial_size: [64,64]
+  spatial_size: [256,256]
   split: official
   val_obj_weighting: false
   yield_videos: false

@@ -286,7 +286,7 @@ class NLayerDiscriminator(nn.Module):
                 norm_layer(num_channels=ndf * nf_mult, num_groups=16),
                 nn.LeakyReLU(0.2, True)
             ]
-        width = 64
+        width = 256
         for layer in range(n_layers):
             width = int((width - 4 + 2) / 2 + 1)
         nf_mult_prev = nf_mult
@@ -303,9 +303,9 @@ class NLayerDiscriminator(nn.Module):
         width = int((width - 4 + 2) / 1 + 1)
         width = int((width - 4 + 2) / 1 + 1)
         print(f'Discriminator output w x h = {width} x {width}')
-        self.minibatch_disc = MinibatchDiscrimination(width**2, width, width)
-        self.width = width
-        self.fc = nn.Linear(width**2 + width, width**2)
+        # self.minibatch_disc = MinibatchDiscrimination(width**2, width, width)
+        # self.width = width
+        # self.fc = nn.Linear(width**2 + width, width**2)
 
     def forward(self, input):
         """Standard forward."""
@@ -313,9 +313,9 @@ class NLayerDiscriminator(nn.Module):
         # x = self.minibatch_disc(x)
         # x = x.view(-1, self.minibatch_disc_shape[0], self.minibatch_disc_shape[1], self.minibatch_disc_shape[2])
         x = self.model(input)
-        x = self.minibatch_disc(x)
+        # x = self.minibatch_disc(x)
         # print(self.width, self.width**2, self.width**2 + self.width, x.size())
-        x = self.fc(x)
+        # x = self.fc(x)
         return x
 
     def loss(self, pred, real):

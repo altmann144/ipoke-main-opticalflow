@@ -1,5 +1,5 @@
 general:
-  run_name: BigGAN64-FC-z_dim-resnet50-bn-lr5e-4-nll_loss
+  run_name: BigGAN256-FC-z_dim-resnet50-bn-lr5e-6-no_logvar
 #  checkpoint_ae: /export/compvis-nfs/user/daltmann/scratch/FCAEModel_512.ckpt # checkpoint for fixed BigGAN in 2nd stage
 data:
   aug_deg: 15
@@ -21,7 +21,7 @@ data:
   p_geom: 0.8
   poke_size: 5
   scale_poke_to_res: true
-  spatial_size: [64,64]
+  spatial_size: [256,256]
   split: official
   val_obj_weighting: false
   yield_videos: false
@@ -30,15 +30,15 @@ data:
   filter: all
 
 training:
-  lr: 0.0005
+  lr: 0.000005
   weight_decay: 0
   min_acc_batch_size: 3
 #  max_batches_per_epoch: 2000
   max_val_batches: 400
   profiler: False
   n_epochs: 400
-  pretrain: 0
-  w_kl: 0.00001
+  pretrain: 100 # number of epochs before discriminator is included in loss
+  w_kl: 0.0001
   val_every: 1500
   forward_sample: False
 
