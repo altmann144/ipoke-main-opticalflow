@@ -1,0 +1,99 @@
+general:
+  run_name: Baseline-FC-z_dim-resnet18-group-lr2e-4
+#  checkpoint_ae: /export/compvis-nfs/user/daltmann/scratch/FCAEModel_512.ckpt # checkpoint for fixed BigGAN in 2nd stage
+
+data:
+  dataset: PlantDataset
+  poke_size: 1
+#  valid_lags: 1
+  #subsample_step: 2
+  max_frames: 10
+  batch_size: 16
+  n_workers: 20
+  yield_videos: True
+  spatial_size: [64,64]
+  p_col: .8
+  p_geom: .8
+  augment_b: 0.4
+  augment_c: 0.5
+  augment_h: 0.15
+  augment_s: 0.4
+  aug_deg: 15 # for iper use 0, for plants use 30°
+  # translation is (vertical, horizontal)
+  aug_trans: [0.1,0.1]
+  split: official
+  flow_weights: False
+  filter_flow: False
+  augment_wo_dis: True
+  n_pokes: 1
+  normalize_flows: False
+  zero_poke: True
+  zero_poke_amount: 12
+  object_weighting: False
+  val_obj_weighting: False
+  filter: all
+
+training:
+  lr: 0.0002
+  weight_decay: 0.00001
+  min_acc_batch_size: 3
+  max_batches_per_epoch: 2000
+  max_val_batches: 200
+  profiler: False
+  n_epochs: 1000
+  w_kl: 0.0000001
+  w_l1: 10
+  w_vgg: 10
+  val_every: 1000
+  gamma: 0.98
+  vgg_1: False
+  full_sequence: True
+
+
+architecture:
+  fc_baseline: True
+  ENC_M_channels: [64, 128, 128, 256, 256]
+  z_dim: 64
+  norm: 'group'
+  spectral_norm: True
+  running_stats: False
+  n_gru_layers: 4
+  dec_channels: [256,256,128,128,64]
+#  min_spatial_size: 8
+  deterministic: False
+
+d_t:
+  use: True
+  patch_temp_disc: False
+  gp_weight: 1.2
+  fmap_weight: 1.
+  gen_weight: 1.
+  bce_loss: False
+  num_classes: 1
+  pretrain: 0
+  max_frames: 12
+  gp_1: False
+
+d_s:
+  use: True
+  bce_loss: False
+  gp_weight: 0.
+  fmap_weight: 1.
+  pretrain: 0
+  n_examples: 16
+  gen_weight: 1.
+  gp_1: False
+
+logging:
+  n_val_img_batches: 4
+  log_train_prog_at: 300
+  n_saved_ckpt: 5
+  n_samples_fvd: 1000
+  bs_i3d: 8
+  n_logged_img: 8
+
+testing:
+  n_samples_fvd: 1000
+  # for diversity measure
+  n_samples_per_data_point: 50
+  test_batch_size: 16

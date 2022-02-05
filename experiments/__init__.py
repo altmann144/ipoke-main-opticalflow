@@ -1,5 +1,7 @@
 from experiments.first_stage_image import FirstStageImageModel
 from experiments.poke_encoder import PokeEncoderModel
+from experiments.poke_encoder_FC import PokeEncoderModelFC
+from experiments.img_encoder import FirstStageImageModelFC
 from experiments.first_stage_video import FirstStageSequenceModel
 from experiments.second_stage_video import SecondStageVideoModel
 
@@ -10,6 +12,8 @@ __experiments__ = {
     "poke_encoder": PokeEncoderModel,
     "first_stage": FirstStageSequenceModel,
     "second_stage": SecondStageVideoModel,
+    "poke_encoder_FC": PokeEncoderModelFC,
+    "img_encoder_fc": FirstStageImageModelFC,
 }
 
 

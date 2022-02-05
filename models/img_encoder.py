@@ -7,7 +7,7 @@ import wandb
 import numpy as np
 import logging
 
-from models.modules.autoencoders.fully_conv_models import ConvDecoder,ConvEncoder
+from models.modules.autoencoders.baseline_fc_models import FirstStageFCWrapper
 from models.modules.autoencoders.LPIPS import LPIPS as PerceptualLoss
 from models.modules.discriminators.disc_utils import calculate_adaptive_weight, adopt_weight, hinge_d_loss
 from models.modules.discriminators.patchgan import define_D
@@ -18,7 +18,7 @@ from utils.losses import kl_conv
 from utils.general import get_logger
 
 
-class ConvAEModel(pl.LightningModule):
+class ImgAE(pl.LightningModule):
 
     def __init__(self,config):
         super().__init__()
@@ -32,17 +32,12 @@ class ConvAEModel(pl.LightningModule):
         self.logvar = nn.Parameter(torch.ones(size=()) * 0.0)
         self.disc_start = self.config["training"]['pretrain']
         self.n_logged_imgs = self.config["logging"]["n_log_images"]
-        self.forward_sample = self.config["training"]["forward_sample"] if "forward_sample" in self.config["training"] else False
+        # self.forward_sample = self.config["training"]["forward_sample"] if "forward_sample" in self.config["training"] else False
 
         self.vgg_loss = PerceptualLoss()
 
         # (v)ae
-        n_stages = int(np.log2(self.config["data"]["spatial_size"][0] // self.config["architecture"]["min_spatial_size"]))
-        self.encoder = ConvEncoder(nf_in=self.config["architecture"]["nf_in"],nf_max=self.config["architecture"]["nf_max"],
-                                   n_stages=n_stages,variational=not self.be_deterministic)
-        decoder_channels = [self.config["architecture"]["nf_max"]] + self.encoder.depths
-        self.decoder = ConvDecoder(self.config["architecture"]["nf_max"],decoder_channels)
-
+        self.model = FirstStageFCWrapper(self.config)
 
         # discriminator
         self.disc = define_D(3, 64, netD='basic',gp_weight=self.config["training"]["gp_weight"])
@@ -68,19 +63,6 @@ class ConvAEModel(pl.LightningModule):
         assert isinstance(self.logger, WandbLogger)
         self.logger.watch(self,log="None")
 
-
-    def forward(self,x):
-        """
-
-        :param x: The Image to b reconstructed (will be later the video to be reconstructed)
-        :return:
-        """
-        p_s, mu, log_sigma = self.encoder(x)
-
-        in_dec = p_s if self.forward_sample or self.be_deterministic else mu
-        img = self.decoder([in_dec],del_shape=False)
-
-        return img, mu, log_sigma
 
     def train_disc(self,x_in_true,x_in_fake,opt):
         if self.current_epoch < self.disc_start:
@@ -134,7 +116,7 @@ class ConvAEModel(pl.LightningModule):
 
         (opt_g, opt_d) = self.optimizers()
 
-        rec, mu, log_sigma = self(x)
+        rec = self.model(x)
         rec_loss = torch.abs(x.contiguous() - rec.contiguous())
 
         p_loss = self.vgg_loss(x.contiguous(), rec.contiguous())
@@ -143,7 +125,7 @@ class ConvAEModel(pl.LightningModule):
         if self.be_deterministic:
             kl_loss = 0.
         else:
-            kl_loss = kl_conv(mu,log_sigma)
+            assert self.be_deterministic, "encoder for image conditioning has to be deterministic"
 
         nll_loss = rec_loss / torch.exp(self.logvar) + self.logvar
         nll_loss = torch.sum(nll_loss) / nll_loss.shape[0]
@@ -204,7 +186,9 @@ class ConvAEModel(pl.LightningModule):
             captions = ["Targets", "Predictions"]
             train_grid = batches2image_grid(imgs, captions)
             self.logger.experiment.log({f"Train Batch": wandb.Image(train_grid,
-                                                                    caption=f"Training Images @ it #{self.global_step}")},step=self.global_step)
+                                                                    caption=f"Training Images @ it #{self.global_step}")},
+                                       step=self.global_step,
+                                       commit=False)
 
     def training_epoch_end(self, outputs):
         self.log("epoch",self.current_epoch)
@@ -272,10 +256,8 @@ class ConvAEModel(pl.LightningModule):
 
     def configure_optimizers(self):
         # optimizers
-        ae_params = [{"params": self.encoder.parameters(), "name": "encoder"},
-                     {"params": self.logvar, "name": "logvar"},
-                      {"params": self.decoder.parameters(), "name": "decoder"}
-            ]
+        ae_params = [{"params": self.model.parameters(), "name": "autoencoder"},
+                     {"params": self.logvar, "name": "logvar"}            ]
         lr = self.config["training"]["lr"]
 
 

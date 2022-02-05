@@ -26,6 +26,7 @@ class FCAEModel(pl.LightningModule):
         self.config = config
         kl_weight = config["training"]["w_kl"]
         self.register_buffer("disc_factor",torch.tensor(1.),persistent=True)
+        self.register_buffer("previous_disc_loss",torch.tensor(1.),persistent=True)
         self.register_buffer("disc_weight",torch.tensor(1.),persistent=True)
         self.register_buffer("perc_weight",torch.tensor(1.),persistent=True)
         self.register_buffer("kl_weight", torch.tensor(kl_weight), persistent=True)
@@ -106,6 +107,7 @@ class FCAEModel(pl.LightningModule):
 
         d_weight = calculate_adaptive_weight(nll_loss, g_loss, self.disc_weight,
                                              last_layer=list(self.ae.decoder.parameters())[-1])
+        d_weight *= nn.functional.relu_(1 - nn.functional.relu_(self.previous_disc_loss))
 
         disc_factor = adopt_weight(self.disc_factor, self.current_epoch, threshold=self.disc_start)
         # loss = nll_loss  + d_weight * disc_factor * g_loss + kl_loss
@@ -121,6 +123,8 @@ class FCAEModel(pl.LightningModule):
 
             disc_factor = adopt_weight(self.disc_factor, self.current_epoch, threshold=self.disc_start)
             d_loss = disc_factor * hinge_d_loss(logits_real, logits_fake)
+            self.previous_disc_loss = d_loss.detach()
+            self.previous_disc_loss.requires_grad = False
 
             if d_loss.item() <= 0:
                 break

@@ -77,13 +77,14 @@ class BasicBlock(nn.Module):
 class ResNet(nn.Module):
 
     def __init__(self, block, layers, dic):
-        self.inplanes = 64
+        # self.inplanes = 64
         super(ResNet, self).__init__()
         self.spatial_size = dic['img_size']
         channels = dic['ENC_M_channels']
         # currently no  deterministic motion encoder required
         self.be_determinstic = False
         self.conv1  = nn.Conv3d(3, channels[0], kernel_size=(3, 7, 7), stride=(2, 2, 2), padding=(1, 3, 3), bias=False)
+        self.inplanes = channels[0]
         self.bn1    = nn.GroupNorm(num_groups=16, num_channels=channels[0])
         self.relu   = nn.ReLU(inplace=True)
         # self.maxpool = nn.MaxPool3d(kernel_size=(3, 3, 3), stride=2, padding=1)

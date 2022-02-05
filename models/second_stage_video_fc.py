@@ -15,9 +15,10 @@ import pandas as pd
 import time
 import math
 
+from experiments.fully_connected_video_ae import FCBaseline
 from models.first_stage_motion_model import SpadeCondMotionModel,RNNMotionModel
 from models.pretrained_models import conditioner_models,first_stage_models,poke_embedder_models
-from models.modules.autoencoders.fully_conv_models import FirstStageWrapper
+from models.modules.autoencoders.baseline_fc_models import FirstStageFCWrapper
 from models.modules.INN.INN import SupervisedMacowTransformer, MacowTransformerMultiStep
 from models.modules.INN.loss import FlowLoss
 from models.modules.autoencoders.util import Conv2dTransposeBlock
@@ -27,17 +28,6 @@ from utils.general import linear_var, get_logger
 from utils.metrics import FVD, calculate_FVD, LPIPS,PSNR_custom,SSIM_custom, KPSMetric, metric_vgg16, compute_div_score,SampleLPIPS, SampleSSIM, compute_div_score_mse, compute_div_score_lpips
 from utils.posenet_wrapper import PoseNetWrapper
 from models.pose_estimator.tools.infer import save_batch_image_with_joints
-
-class DummyClass(nn.Module):
-    def __init__(self,config):
-        super().__init__()
-
-    def forward(self, input, cond, reverse=False):
-        return input, cond
-
-    def sample(self, shape,cond, device="cpu"):
-        z_tilde = torch.randn(shape).to(device)
-        return z_tilde
 
 class PokeMotionModel(pl.LightningModule):
 
@@ -139,8 +129,8 @@ class PokeMotionModel(pl.LightningModule):
                 Conv2dTransposeBlock(self.conditioner_config['architecture']['nf_max'],
                                    self.conditioner_config['architecture']['nf_max'], st=int(factor),ks=3,padding=1)
 
-        self.flow = model(self.config["architecture"]) # TODO: this is deactivated for first stage testing without INN
-        # self.flow = DummyClass(self.config['architecture'])
+        self.flow = model(self.config["architecture"])
+
 
         n_samples_umap = self.config["logging"]["n_samples_umap"] if "n_samples_umap" in self.config["logging"] else 1000
         self.n_it_umap = int(math.ceil(n_samples_umap / self.config["data"]["batch_size"])) if not self.config['general']['debug'] else 2
@@ -203,7 +193,7 @@ class PokeMotionModel(pl.LightningModule):
 
 
         #strict = False, because no need to load parameters of discriminators etc
-        self.first_stage_model = SpadeCondMotionModel.load_from_checkpoint(first_stage_ckpt,config=self.first_stage_config,
+        self.first_stage_model = FCBaseline.load_from_checkpoint(first_stage_ckpt,config=self.first_stage_config,
                                                                         train=False,strict=False,dirs=self.dirs)
 
         if self.first_stage_model.enc_motion.be_determinstic:
@@ -220,7 +210,7 @@ class PokeMotionModel(pl.LightningModule):
         with open(conditioner_config) as f:
             self.conditioner_config = yaml.load(f, Loader=yaml.FullLoader)
 
-        self.conditioner = FirstStageWrapper(self.conditioner_config)
+        self.conditioner = FirstStageFCWrapper(self.conditioner_config)
         if 'restart' in self.config['general'] and not self.config["general"]["restart"]:
             state_dict = torch.load(conditioner_ckpt, map_location="cpu")
             # remove keys from checkpoint which are not required
@@ -238,7 +228,7 @@ class PokeMotionModel(pl.LightningModule):
 
         with open(emb_config) as f:
             self.poke_emb_config = yaml.load(f, Loader=yaml.FullLoader)
-        self.poke_embedder = FirstStageWrapper(self.poke_emb_config)
+        self.poke_embedder = FirstStageFCWrapper(self.poke_emb_config)
         assert self.poke_embedder.be_deterministic
         state_dict = torch.load(emb_ckpt, map_location="cpu")
         # remove keys from checkpoint which are not required
@@ -392,33 +382,32 @@ class PokeMotionModel(pl.LightningModule):
 
             X_hat = torch.stack(X_hat, dim=1)
 
-        elif isinstance(self.first_stage_model, RNNMotionModel):
-            scene = self.first_stage_model.enc_static(X[:, 0])[0]
-            motion, mu, cov = self.first_stage_model.enc_motion(X[:, 1:].transpose(1, 2))
+
+        elif isinstance(self.first_stage_model, FCBaseline):
+            start_frame = X[:, 0]
 
             # hidden state is initiazed with motion encoding
-            hidden = [motion] * self.n_layers
-            x = scene
+            hidden = torch.stack([motion] * self.n_layers, dim=0)
+            # x = X[:,0]
 
             X_hat = []
+
+            in_rnn = torch.cat([self.motion_bias] * start_frame.size(0), dim=0)[:, None]
+
             for i in range(X.size(1) - 1):
-                hidden = self.first_stage_model.rnn(x, hidden)
-                x = self.first_stage_model.post_hidden(hidden[-1])
-                reaction = self.first_stage_model.gen([x], del_shape=True)
+                out, hidden = self.rnn(in_rnn, hidden)
+
+                reaction = self.gen([out.squeeze(1)], start_frame, del_shape=True)
 
                 X_hat.append(reaction)
 
             X_hat = torch.stack(X_hat, dim=1)
 
-            return X_hat, mu, cov
-        else:
-            X_hat = self.gen(X[:, 0], motion)
-
-        return X_hat
+            # return mu and conv as 4d tensor to be able to use loss framework from main model
+            return X_hat, mu[..., None, None], cov[..., None, None]
 
 
     def training_step(self,batch, batch_idx):
-
 
 
         out, logdet = self.forward_density(batch)

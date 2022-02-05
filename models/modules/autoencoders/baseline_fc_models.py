@@ -20,6 +20,7 @@ class FirstStageFCWrapper(nn.Module):
         self.decoder = BaselineFCGenerator(config=self.config['architecture'],use_spade=False)
         self.be_deterministic = True
 
+
     def forward(self,x):
         enc = self.encoder(x)
         return self.decoder([enc],None)
@@ -32,6 +33,8 @@ class BaselineFCEncoder(ConvEncoder):
             np.log2(self.config["data"]["spatial_size"][0] // 4))
         nf_max = self.config['architecture']['nf_max']
         nf_in = self.config['architecture']['nf_in']
+        if "poke_and_image" in self.config["architecture"] and self.config["architecture"]["poke_and_image"]:
+            nf_in+=3
         #always determinstic
         self.deterministic = True
         super().__init__(nf_in,nf_max,n_stages,variational=not self.deterministic)
@@ -39,7 +42,7 @@ class BaselineFCEncoder(ConvEncoder):
         self.make_fc = NormConv2d(nf_max,nf_max,4,padding=0)
 
     def forward(self, x):
-        # onky use output as model is not varaitional
+        # only use output as model is not varaitional
         out, *_ =super().forward(x,sample_prior=False)
         out = self.make_fc(out).squeeze(dim=-1).squeeze(dim=-1)
         return out
@@ -54,7 +57,7 @@ class BaselineFCGenerator(nn.Module):
         channels = config['dec_channels']
         snorm = config['spectral_norm']
         latent_dim = config['z_dim']
-        nc_out = config['nc_out'] if 'nc_out' in config else 3
+        nc_out = config['nf_in']
         self.use_spade = use_spade
 
         self.blocks = nn.ModuleList()

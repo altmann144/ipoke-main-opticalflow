@@ -61,9 +61,9 @@ class Experiment:
 
         if self.config['general']['test'] == 'none':
             logger = WandbLogger(name=self.config["general"]["model_name"], save_dir=self.dirs["log"],
-                              project="poking_inn",group=self.config["general"]["experiment"],tags=[self.config["data"]["dataset"]],
+                              project="poking_inn_fc",group=self.config["general"]["experiment"],tags=[self.config["data"]["dataset"]],
                              version=self.config["general"]["experiment"]+ "-" +self.config["general"]["model_name"]+ "-" + str(self.current_version),
-                             save_code=True,entity='inn_poking')
+                             save_code=True,entity='altmann')
         else:
             logger = False
 

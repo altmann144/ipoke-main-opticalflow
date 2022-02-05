@@ -1,3 +1,4 @@
+
 from models.modules.INN.INN import UnsupervisedMaCowTransformer3
 from models.modules.INN.loss import FlowLoss
 from models.opticalFlow.models import FlowVAE
@@ -32,6 +33,10 @@ class PokeMotionModelFixed(PokeMotionModel):
         destination._metadata = OrderedDict()
         return destination
 
+    # def forward_density(self, batch):
+    #     flow_input, cond = self.make_flow_input(batch)
+    #     return flow_input, cond
+
     def setup(self, device: torch.device):
         self.freeze()
 
@@ -59,7 +64,7 @@ class FlowMotion(pl.LightningModule):
 
         super(FlowMotion, self).__init__()
         self.config = config
-        self.weight_recon = 0.01
+        self.weight_recon = 0.001
         self.nll_weight = 1
         self.VAE = FlowVAEFixed(config).eval()
         self.INN = UnsupervisedMaCowTransformer3(self.config["architecture"])
@@ -138,6 +143,9 @@ class FlowMotion(pl.LightningModule):
                 image_samples.append(out[:n_logged_imgs])
 
         return image_samples
+    def backward_sample(self, flow_output):
+        out = self.INN(flow_output, reverse=True)
+        return out
 
     def forward_infer_optical_flow(self, x_hat, n_samples=1, n_logged_imgs=1):
         optical_flow = []
@@ -160,7 +168,7 @@ class FlowMotion(pl.LightningModule):
 
         out, logdet = self.INN(encv, reverse=False)
 
-        return out, logdet
+        return out, logdet, encv
 
 
     def configure_optimizers(self):
@@ -174,9 +182,10 @@ class FlowMotion(pl.LightningModule):
     def training_step(self,batch, batch_id):
 
         out_hat, _ = self.forward_density_video(batch)
-        out, logdet = self.forward_density(batch)
+        # out_hat, _ = self.motion_model.encode_first_stage(batch['images'])
+        out, logdet, enc_vae = self.forward_density(batch)
         loss, loss_dict = self.loss_func(out, logdet)
-        loss_recon = F.smooth_l1_loss(out, out_hat, reduction='sum')
+        loss_recon = F.smooth_l1_loss(out, out_hat, reduction='mean')
         loss_dict['reconstruction loss'] = loss_recon.detach()
         loss += loss_recon * self.weight_recon
         loss_dict["flow_loss"] = loss
@@ -188,6 +197,12 @@ class FlowMotion(pl.LightningModule):
         lr = self.optimizers().param_groups[0]["lr"]
         self.log("learning_rate",lr,on_step=True,on_epoch=False,prog_bar=True,logger=True)
 
+        # backward training
+        enc_vae_hat = self.backward_sample(out_hat)[:,:self.config['architecture']['nf_max']]
+        enc_vae = enc_vae[:,:self.config['architecture']['nf_max']]
+        loss_enc_vae_recon = F.mse_loss(enc_vae_hat, enc_vae, reduction='mean')
+        loss += loss_enc_vae_recon * 100
+        self.log('vae_recon', loss_enc_vae_recon, on_step=True,on_epoch=False,prog_bar=True,logger=True)
         if self.global_step % self.config["logging"]["log_train_prog_at"] == 0:
             self.INN.eval()
             n_samples = self.config["logging"]["n_samples"]
@@ -225,9 +240,9 @@ class FlowMotion(pl.LightningModule):
 
         with torch.no_grad():
             out_hat, _ = self.forward_density_video(batch)
-            out, logdet = self.forward_density(batch)
+            out, logdet, _ = self.forward_density(batch)
             loss, loss_dict = self.loss_func(out, logdet)
-            loss_recon = F.smooth_l1_loss(out, out_hat, reduction='sum')
+            loss_recon = F.smooth_l1_loss(out, out_hat, reduction='mean')
             loss_dict['reconstruction loss'] = loss_recon.detach()
             loss += loss_recon * self.weight_recon
             loss_dict["flow_loss"] = loss

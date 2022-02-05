@@ -4,7 +4,7 @@ from experiments import select_experiment
 import torch
 import yaml
 import os
-import silence_tensorflow.auto
+# import silence_tensorflow.auto
 
 
 def create_dir_structure(config, model_name):

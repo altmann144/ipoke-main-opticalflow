@@ -78,5 +78,5 @@ if __name__ == '__main__':
     if (args.resume) or (input("start from scratch? (y,n) ") == 'y'):
         trainer.fit(model, datamod.train_dataloader(), datamod.val_dataloader())
         if not args.skip_save:
-            trainer.save_checkpoint('wandb/flowmotion_2048.ckpt')
+            trainer.save_checkpoint('wandb/flowmotion_1024.ckpt')
 
