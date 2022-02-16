@@ -1,11 +1,10 @@
 from pytorch_lightning.loggers import WandbLogger
-import pickle
 import sys
 import argparse
 import torch
 import pytorch_lightning as pl
 import yaml
-from experiments.fully_connected_ae import FCAEModel
+from models.fully_connected_ae import FCAEModel
 from data.datamodule import StaticDataModule
 import numpy as np
 import os

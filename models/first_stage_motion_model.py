@@ -69,7 +69,7 @@ class MotionModel(pl.LightningModule):
 
             self.console_logger = get_logger()
 
-        if issubclass(self.__class__,MotionModel):
+        if issubclass(self.__class__, MotionModel):
             return
 
         # generator
@@ -89,7 +89,7 @@ class MotionModel(pl.LightningModule):
 
     def setup(self, stage: str):
         assert isinstance(self.logger, WandbLogger)
-        self.logger.watch(self,log="all")
+        self.logger.watch(self,log='None')
 
     def forward(self,X):
 
@@ -293,7 +293,7 @@ class MotionModel(pl.LightningModule):
                                   n_max_per_row=int(self.config["data"]["batch_size"] / 2), )
             self.logger.experiment.history._step = self.global_step
             self.logger.experiment.log({"Train Video Grid": wandb.Video(vid_grid, caption=f'Training video at it {self.global_step}', fps=3)},
-                                       step=self.global_step)
+                                       step=self.global_step, commit=False)
 
         self.trainer.train_loop.running_loss.append(loss)
 
@@ -331,7 +331,7 @@ class MotionModel(pl.LightningModule):
                                       n_max_per_row=int(self.config["data"]["batch_size"] / 2))
                 self.logger.experiment.history._step = self.global_step
                 self.logger.experiment.log({"Val Video Grid": wandb.Video(vid_grid, caption=f'Validation video at it {self.global_step}', fps=3)},
-                                           step=self.global_step)
+                                           step=self.global_step, commit=False)
 
 
             if batch_id <= int(self.config["logging"]["n_samples_fvd"] / X_hat.size(0)):
@@ -547,6 +547,7 @@ class SpadeCondMotionModel(MotionModel):
 
 
 class FCBaseline(MotionModel):
+
 
     def __init__(self,config,dirs,train=True):
         super().__init__(config,train)

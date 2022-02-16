@@ -4,6 +4,9 @@ from experiments.poke_encoder_FC import PokeEncoderModelFC
 from experiments.img_encoder import FirstStageImageModelFC
 from experiments.first_stage_video import FirstStageSequenceModel
 from experiments.second_stage_video import SecondStageVideoModel
+from experiments.second_stage_video_fc import SecondStageVideoModelFC
+from experiments.third_stage_flow_encoder_fc import ThirdStageFlowEncoderFC
+
 
 
 
@@ -14,6 +17,8 @@ __experiments__ = {
     "second_stage": SecondStageVideoModel,
     "poke_encoder_FC": PokeEncoderModelFC,
     "img_encoder_fc": FirstStageImageModelFC,
+    "second_stage_fc": SecondStageVideoModelFC,
+    "flow_encoder_fc": ThirdStageFlowEncoderFC,
 }
 
 

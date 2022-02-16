@@ -138,7 +138,7 @@ class ImgAE(pl.LightningModule):
 
 
         d_weight = calculate_adaptive_weight(nll_loss, g_loss, self.disc_weight,
-                                             last_layer=list(self.decoder.parameters())[-1])\
+                                             last_layer=list(self.model.decoder.parameters())[-1])\
             if self.current_epoch >= self.disc_start else 0
 
         disc_factor = adopt_weight(self.disc_factor, self.current_epoch, threshold=self.disc_start)
@@ -182,7 +182,7 @@ class ImgAE(pl.LightningModule):
         #
 
         if self.global_step % self.config["logging"]["log_train_prog_at"] == 0:
-            imgs = [x, rec]
+            imgs = [x[:self.n_logged_imgs], rec[:self.n_logged_imgs]]
             captions = ["Targets", "Predictions"]
             train_grid = batches2image_grid(imgs, captions)
             self.logger.experiment.log({f"Train Batch": wandb.Image(train_grid,
@@ -198,7 +198,7 @@ class ImgAE(pl.LightningModule):
         with torch.no_grad():
             x = batch["images"][:,-1]
 
-            rec, mu, log_sigma = self(x)
+            rec = self.model(x)
             rec_loss = torch.abs(x.contiguous() - rec.contiguous())
 
             p_loss = self.vgg_loss(x.contiguous(), rec.contiguous())
@@ -206,7 +206,7 @@ class ImgAE(pl.LightningModule):
             rec_loss = rec_loss + self.perc_weight * p_loss
 
 
-            kl_loss = 0. if self.be_deterministic else kl_conv(mu,log_sigma)
+            kl_loss = 0.
 
             nll_loss = rec_loss / torch.exp(self.logvar) + self.logvar
             nll_loss = torch.sum(nll_loss) / nll_loss.shape[0]
@@ -244,13 +244,15 @@ class ImgAE(pl.LightningModule):
             captions = ["Targets", "Predictions"]
             val_grid = batches2image_grid(imgs,captions)
             self.logger.experiment.log({f"Validation Batch #{batch_id}" : wandb.Image(val_grid,
-                                                                                      caption=f"Validation Images @ it {self.global_step}")},step=self.global_step)
+                                                                                      caption=f"Validation Images @ it {self.global_step}")},
+                                       step=self.global_step,
+                                       commit=False)
 
     def validation_epoch_end(self,outputs):
         fid = compute_fid(self.fid_features_real,self.fid_features_fake)
         #self.logger.info(f'FID after validation @epoch {self.current_epoch}: {fid}')
         self.logger.experiment.history._step = self.global_step
-        self.logger.experiment.log({"fid-val": fid},step=self.global_step)
+        self.logger.experiment.log({"fid-val": fid},step=self.global_step, commit=False)
         self.fid_features_fake.clear()
         self.fid_features_real.clear()
 

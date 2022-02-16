@@ -14,8 +14,8 @@ from models.modules.discriminators.disc_utils import calculate_adaptive_weight, 
 # from models.modules.discriminators.disc_utils import MinibatchDiscrimination
 
 from models.modules.discriminators.patchgan import define_D
-# from utils.metrics import LPIPS
-# from lpips import LPIPS as lpips_net
+from utils.metrics import LPIPS, SSIM_custom, PSNR_custom
+from lpips import LPIPS as lpips_net
 from utils.logging import batches2flow_grid, batches2image_grid
 
 class FCAEModel(pl.LightningModule):
@@ -38,11 +38,7 @@ class FCAEModel(pl.LightningModule):
 
         # ae
         self.ae = BigAE(self.config["architecture"])
-        # self.encoder = BaselineFCEncoder(self.config)
-        # self.config['architecture']['dec_channels'] =  [self.config['architecture']['nf_max']] + self.encoder.depths
-        self.config['architecture']['spectral_norm']=True
-        # self.config['architecture'].update({'z_dim' : self.config['architecture']['nf_max']})
-        # self.decoder = BaselineFCGenerator(self.config['architecture'],use_spade=False)
+        self.config['architecture']['spectral_norm'] = True
 
 
         self.be_deterministic = self.config["architecture"]["deterministic"]
@@ -53,13 +49,11 @@ class FCAEModel(pl.LightningModule):
         #                                               self.config["architecture"]["in_size"]*self.config["architecture"]["in_size"], 2, mean=True)
 
         # metrics
-        # self.ssim = SSIM(
-        # self.psnr = PSNR()
-        # self.lpips_net = lpips_net()
-        # for param in self.lpips_net.parameters():
-        #     param.requires_grad = False
-        #
-        # self.lpips_metric = LPIPS()
+        self.lpips_net = lpips_net()
+        for param in self.lpips_net.parameters():
+            param.requires_grad = False
+
+        self.lpips_metric = LPIPS()
 
         if config['architecture']['n_out_channels'] == 2:
             self.key = 'flow'
@@ -198,6 +192,11 @@ class FCAEModel(pl.LightningModule):
                     "val/nll_loss": nll_loss,
                     "val/kl_loss": kl_loss,
                     "val/p_mode": p_mode.mean().detach().cpu()}
+        if self.key == 'flow':
+            x = torch.nn.functional.pad(x, (0, 0, 0, 0, 0, 1))
+            rec = torch.nn.functional.pad(rec, (0, 0, 0, 0, 0, 1))
+
+        self.log("lpips-val", rec.contiguous(), x.contiguous(), on_step=False, on_epoch=True, logger=True)
 
         self.log_dict(log_dict, logger=True, prog_bar=False,on_epoch=True)
 
