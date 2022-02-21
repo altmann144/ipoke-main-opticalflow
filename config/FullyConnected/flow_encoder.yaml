@@ -37,7 +37,7 @@ data:
 
 training:
   lr: 0.002
-  weight_decay: 0.00001
+  weight_decay: 0.0001
   min_acc_batch_size: 3
   max_batches_per_epoch: 2000
   max_val_batches: 400
@@ -52,7 +52,7 @@ architecture:
 #  n_channels: 2
   deterministic: False
   pretrained: False
-  z_dim: 128
+  z_dim: 120
   type: resnet18
   norm: bn
   pre_process: False

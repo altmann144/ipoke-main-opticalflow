@@ -94,7 +94,7 @@ class Experiment:
         else:
             self.basic_trainer = partial(self.basic_trainer,val_check_interval=self.config["training"]["val_every"],num_sanity_val_steps=0)
 
-        self.ckpt_callback = partial(ModelCheckpoint,dirpath=path.join(self.dirs["ckpt"],str(self.current_version)), period= 1,save_last=True)
+        self.ckpt_callback = partial(ModelCheckpoint,dirpath=path.join(self.dirs["ckpt"],str(self.current_version)), period= 2,save_last=True)
 
         if 'test_batch_size' not in self.config['data']:
             self.config['data']['test_batch_size'] = 16

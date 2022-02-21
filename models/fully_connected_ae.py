@@ -84,28 +84,25 @@ class FCAEModel(pl.LightningModule):
         (opt_g, opt_d) = self.optimizers()
 
         rec, p_mode, p = self(x)
-        rec_loss = torch.abs(x.contiguous() - rec.contiguous()).mean([1,2,3])
+        rec_loss = torch.mean(torch.abs(x.contiguous() - rec.contiguous()))
 
         # equal weighting of l1 and perceptual loss
-        p_loss = self.vgg_loss(x.contiguous(), rec.contiguous())
-        rec_loss = rec_loss.mean() +  self.perc_weight * p_loss.mean()
-        #
-        nll_loss = rec_loss / torch.exp(self.logvar)
-        # nll_loss = torch.sum(nll_loss) / nll_loss.shape[0] + self.logvar
-        nll_loss = nll_loss + self.logvar
-        kl_loss = torch.mean(p.kl()) * self.kl_weight
+        p_loss = torch.mean(self.vgg_loss(x.contiguous(), rec.contiguous()))
+
+#         nll_loss = rec_loss / torch.exp(self.logvar) + self.logvar
+        kl_loss = p.kl().mean()
 
         # generator update
         logits_fake = self.discriminate(rec)
         g_loss = -torch.mean(logits_fake)
 
-        d_weight = calculate_adaptive_weight(nll_loss, g_loss, self.disc_weight,
+        d_weight = calculate_adaptive_weight( rec_loss + p_loss*self.perc_weight, g_loss, self.disc_weight,
                                              last_layer=list(self.ae.decoder.parameters())[-1])
         d_weight *= nn.functional.relu_(1 - nn.functional.relu_(self.previous_disc_loss))
 
         disc_factor = adopt_weight(self.disc_factor, self.current_epoch, threshold=self.disc_start)
         # loss = nll_loss  + d_weight * disc_factor * g_loss + kl_loss
-        loss = nll_loss + d_weight * disc_factor * g_loss + kl_loss
+        loss = rec_loss + p_loss*self.perc_weight + d_weight*disc_factor*g_loss + kl_loss*self.kl_weight
 
 
         opt_g.zero_grad()
@@ -126,25 +123,20 @@ class FCAEModel(pl.LightningModule):
             self.manual_backward(d_loss,opt_d)
             opt_d.step()
 
-        loss_dict = {"train/loss": loss, "train/d_loss":d_loss, "train/logvar": self.logvar.detach(), "train/nll_loss":nll_loss,
+        loss_dict = {"train/loss": loss, "train/d_loss":d_loss,
                      "train/rec_loss": rec_loss,"train/d_weight":d_weight, "train/disc_factor": disc_factor,
                      "train/g_loss": g_loss, "train/logits_real": logits_real.mean(), "train/logits_fake": logits_fake.mean(),
-                     "train/p_mode": p_mode.mean().detach().cpu(), "train/kl_loss": kl_loss,}
+                     "train/kl_loss": kl_loss,}
 
         self.log_dict(loss_dict,logger=True,on_epoch=True,on_step=True)
-        #self.logger.experiment.log({k: loss_dict[k].item() if isinstance(loss_dict[k],torch.Tensor) else loss_dict[k] for k in loss_dict})
         self.log("global step", self.global_step)
         self.log("learning rate",opt_g.param_groups[0]["lr"],on_step=True, logger=True)
 
-        #self.log_dict(loss_dict, prog_bar=True, on_step=True, logger=False)
-
         self.log("overall_loss",loss,prog_bar=True,logger=False)
+        self.log("rec_loss",rec_loss,prog_bar=True,logger=False)
         self.log("d_loss",d_loss,prog_bar=True,logger=False)
-        self.log("nll_loss",nll_loss,prog_bar=True,logger=False)
         self.log("kl_loss",kl_loss,prog_bar=True,logger=False)
         self.log("g_loss",g_loss,prog_bar=True,logger=False)
-        self.log("logvar",self.logvar.detach(),prog_bar=True,logger=False)
-        self.log("rec_loss",rec_loss,prog_bar=True,logger=False)
 
         loss_dict.update({"img_real-train": x, "img_fake-train": rec})
 
@@ -163,7 +155,7 @@ class FCAEModel(pl.LightningModule):
             captions = ["Targets", "Predictions"]
             train_grid = self.batches2visual_grid(imgs, captions)
             self.logger.experiment.log({f"Train Batch": wandb.Image(train_grid,
-                                                                    caption=f"Training Images @ it #{self.global_step}")},step=self.global_step)
+                                                                    caption=f"Training Images @ it #{self.global_step}")},step=self.global_step, commit=False)
 
     def training_epoch_end(self, outputs):
         self.log("epoch",self.current_epoch)
@@ -171,32 +163,30 @@ class FCAEModel(pl.LightningModule):
     def validation_step(self, batch, batch_id):
         x = batch[self.key]
         if self.key == 'images':
-            x = x[:, 0] # dataloader returns stacked imgs.append(img)
+            x = x[:, 0] # dataloader returns stacked img.append(img)
+
+        (opt_g, opt_d) = self.optimizers()
+
         rec, p_mode, p = self(x)
-        rec_loss = torch.abs(x.contiguous() - rec.contiguous()).mean([1,2,3])
+        rec_loss = torch.mean(torch.abs(x.contiguous() - rec.contiguous()))
 
-        p_loss = self.vgg_loss(x.contiguous(), rec.contiguous())
         # equal weighting of l1 and perceptual loss
-        rec_loss = rec_loss.mean() + self.perc_weight * p_loss.mean()
+        p_loss = torch.mean(self.vgg_loss(x.contiguous(), rec.contiguous()))
 
-        nll_loss = rec_loss / torch.exp(self.logvar)
-        # nll_loss = torch.sum(nll_loss) / nll_loss.shape[0] + self.logvar
-        nll_loss = nll_loss + self.logvar
-        kl_loss = torch.mean(p.kl()) * self.kl_weight
+#         nll_loss = rec_loss / torch.exp(self.logvar) + self.logvar
+        kl_loss = p.kl().mean()
 
-        loss = nll_loss + kl_loss
+        loss = rec_loss + p_loss*self.perc_weight + kl_loss*self.kl_weight
 
         log_dict = {"val/loss": loss,
-                    "val/logvar": self.logvar.detach(),
                     "val/rec_loss": rec_loss,
-                    "val/nll_loss": nll_loss,
-                    "val/kl_loss": kl_loss,
-                    "val/p_mode": p_mode.mean().detach().cpu()}
-        if self.key == 'flow':
-            x = torch.nn.functional.pad(x, (0, 0, 0, 0, 0, 1))
-            rec = torch.nn.functional.pad(rec, (0, 0, 0, 0, 0, 1))
+                    "val/kl_loss": kl_loss}
 
-        self.log("lpips-val", rec.contiguous(), x.contiguous(), on_step=False, on_epoch=True, logger=True)
+        if self.key == 'flow':
+            x = torch.nn.functional.pad(x, (0, 0, 0, 0, 0, 1)).contiguous()
+            rec = torch.nn.functional.pad(rec, (0, 0, 0, 0, 0, 1)).contiguous()
+
+        self.log("lpips-val", self.lpips_metric(self.lpips_net, rec, x).cpu(), on_step=False, on_epoch=True, logger=True)
 
         self.log_dict(log_dict, logger=True, prog_bar=False,on_epoch=True)
 
@@ -222,8 +212,9 @@ class FCAEModel(pl.LightningModule):
             captions = ["Targets", "Predictions"]
             val_grid = self.batches2visual_grid(imgs,captions)
             self.logger.experiment.log({f"Validation Batch #{batch_id}" : wandb.Image(val_grid,
-                                                                                      caption=f"Validation Images @ it {self.global_step}")},step=self.global_step
-                                       )
+                                                                                      caption=f"Validation Images @ it {self.global_step}")},
+                                       step=self.global_step,
+                                       commit=False)
 
     def configure_optimizers(self):
         # optimizers

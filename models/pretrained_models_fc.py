@@ -35,5 +35,10 @@ conditioner_models = {
     },
 
 }
-
+second_stage_models = {
+'plants-ss64-128': {'ckpt': 'scratch/second_stage_fc/ckpt/pltans-ss64-128/0/epoch=85-FVD-val=88.523.ckpt'},
+}
+flow_encoder_models = {
+'plants-ss64-128': {'ckpt': 'scratch/flow_encoder_fc/ckpt/plants-ss64-128/1/epoch=19-lpips-val=0.086.ckpt'}
+}
 flow_conditioner_models ={}
