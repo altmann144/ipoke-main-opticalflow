@@ -223,7 +223,7 @@ class FCAEModel(pl.LightningModule):
                      ]
         lr = self.config["training"]["lr"]
 
-        opt_g = Adam(ae_params, lr = lr,weight_decay=self.config["training"]["weight_decay"])
+        opt_g = Adam(ae_params, lr = lr, weight_decay=self.config["training"]["weight_decay"])
         # params = list(self.discriminator.parameters())+ list(self.minibatch_disc.parameters())
         disc_params = list(self.discriminator.parameters())
         opt_d = Adam(disc_params,lr=self.config["training"]["lr"], weight_decay=self.config["training"]["weight_decay"])

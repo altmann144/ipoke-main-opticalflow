@@ -21,7 +21,7 @@ from models.first_stage_motion_model import SpadeCondMotionModel
 from models.pretrained_models_fc import conditioner_models,first_stage_models,poke_embedder_models
 from models.modules.autoencoders.baseline_fc_models import FirstStageFCWrapper
 from models.modules.INN.INN import SupervisedTransformer
-from models.modules.INN.loss import FlowLoss
+from models.modules.INN.loss import FlowLoss, NLLWithTypicality
 from models.modules.autoencoders.util import Conv2dTransposeBlock
 from models.modules.INN.coupling_flow_alternative import AdaBelief
 from utils.logging import make_flow_video_with_samples, log_umap, make_samples_and_samplegrid, save_video, make_transfer_grids_new, make_multipoke_grid
@@ -43,6 +43,11 @@ class PokeMotionModelFC(pl.LightningModule):
         logdet_weight = self.config['training']['logdet_weight'] if 'logdet_weight' in self.config else 1.
         self.use_adabelief = 'adabelief' in self.config['training'] and self.config['training']['adabelief']
         self.n_test_samples = self.config['testing']['n_samples_per_data_point']
+
+        # normal or radial_gaussian distribution
+        if 'base_distribution' in self.config['architecture']:
+            self.base_distribution = self.config['architecture']['base_distribution']
+        else: self.base_distribution = 'normal'
 
 
         self.console_logger = get_logger()
@@ -85,13 +90,15 @@ class PokeMotionModelFC(pl.LightningModule):
         self.metrics_dir = path.join(self.dirs['generated'],'metrics')
         os.makedirs(self.metrics_dir,exist_ok=True)
 
+        self.third_stage_training = config["general"]["third_stage_training"] if "third_stage_training" in config["general"] else False
+        if not self.third_stage_training: # do not initialize metrics if training third stage
 
-        self.FVD = FVD(n_samples=self.config['logging']['n_fvd_samples'] if 'n_fvd_samples' in  self.config['logging'] else 1000)
-        if self.test_mode == 'none' or self.test_mode=='accuracy':
-            self.lpips_metric = LPIPS()
-            self.ssim = SSIM_custom()
-            self.psnr = PSNR_custom()
-            self.lpips_net = lpips_net()
+            self.FVD = FVD(n_samples=self.config['logging']['n_fvd_samples'] if 'n_fvd_samples' in  self.config['logging'] else 1000)
+            if self.test_mode == 'none' or self.test_mode=='accuracy':
+                self.lpips_metric = LPIPS()
+                self.ssim = SSIM_custom()
+                self.psnr = PSNR_custom()
+                self.lpips_net = lpips_net()
 
 
 
@@ -140,7 +147,9 @@ class PokeMotionModelFC(pl.LightningModule):
 
         self.log_samples = {"train": samples_dict.copy(), "val": samples_dict.copy()}
 
-        self.loss_func = FlowLoss(spatial_mean=self.spatial_mean_for_loss,logdet_weight=logdet_weight)
+        self.loss_func = FlowLoss(spatial_mean=self.spatial_mean_for_loss,logdet_weight=logdet_weight, radial=self.base_distribution=='radial') # dont forget to remove global_step when reactivating
+        # self.register_buffer("D", torch.tensor(self.config["architecture"]["flow_in_channels"]))
+        # self.loss_func = NLLWithTypicality(self.config["architecture"]["flow_in_channels"], lambda_t=0.1, lambda_nll=1.,loss_type='squared',fade_start=500,fade_end=10000,start_val=0., entropy_factor=1.)
         self.apply_lr_scaling = "lr_scaling" in self.config["training"] and self.config["training"]["lr_scaling"]
         lr = self.config["training"]["lr"]
         if self.apply_lr_scaling:
@@ -303,12 +312,20 @@ class PokeMotionModelFC(pl.LightningModule):
                 shape = [X.size(0), int(cn_factor * self.config['architecture']['flow_in_channels']),
                          int(self.first_stage_config['architecture']['min_spatial_size'] / spatial_factor),
                          int(self.first_stage_config['architecture']['min_spatial_size'] / spatial_factor)]
+
                 flow_input = torch.randn(shape).type_as(X)
+
             else:
                 #flow_input, *_ = self.encode_first_stage(X)
                 spatial=self.first_stage_config['architecture']['min_spatial_size']
+                shape = (X.size(0),self.config['architecture']['flow_in_channels'],spatial,spatial)
+                flow_input = torch.randn(shape).type_as(X).detach()
 
-                flow_input = torch.randn((X.size(0),self.config['architecture']['flow_in_channels'],spatial,spatial)).type_as(X).detach()
+            # if radial gaussian is wanted, normalize flow_input and scale with a sampled radius |r| with r ~ N(0,1)
+            if self.base_distribution == 'radial':
+                flow_input = torch.nn.functional.normalize(flow_input.view(shape[0], -1))
+                flow_input = flow_input.T * torch.abs(torch.randn(shape[0]).type_as(X))
+                flow_input = flow_input.T.view(shape).detach()
         else:
             with torch.no_grad():
                 flow_input, *_ = self.encode_first_stage(X)
@@ -360,11 +377,13 @@ class PokeMotionModelFC(pl.LightningModule):
 
         return video_samples
 
-    def forward_density(self, batch):
+    def forward_density(self, batch, return_cond = False):
+        ''' returns out, logdet [, cond]'''
         flow_input, cond = self.make_flow_input(batch)
 
         out, logdet = self.flow(flow_input.detach(), cond, reverse=False)
-
+        if return_cond:
+            return out, logdet, cond
         return out, logdet
 
     def encode_first_stage(self,X):
@@ -423,12 +442,15 @@ class PokeMotionModelFC(pl.LightningModule):
             # return mu and conv as 4d tensor to be able to use loss framework from main model
             return X_hat # , mu[..., None, None], cov[..., None, None]
 
+    def on_fit_start(self): # todo on_test_start/on_validation_start same procedure
+        self.loss_func.init_distribution()
+
     def training_step(self,batch, batch_idx):
 
 
         out, logdet = self.forward_density(batch)
 
-        loss, loss_dict = self.loss_func(out,logdet)
+        loss, loss_dict = self.loss_func(out,logdet) #, self.global_step)
 
         self.log_dict(loss_dict,prog_bar=True,on_step=True,logger=False)
         self.log_dict({"train/"+key: loss_dict[key] for key in loss_dict},logger=True,on_epoch=True,on_step=True)
@@ -499,15 +521,15 @@ class PokeMotionModelFC(pl.LightningModule):
     def training_epoch_end(self, outputs):
         self.log("epoch",self.current_epoch)
 
-        if self.current_epoch % 3 == 0:
-            self.log_umap(train=True)
+        # if self.current_epoch % 3 == 0:
+        #     self.log_umap(train=True)
 
 
     def validation_step(self, batch, batch_id):
 
         out, logdet = self.forward_density(batch)
 
-        loss, loss_dict = self.loss_func(out, logdet)
+        loss, loss_dict = self.loss_func(out, logdet) # , self.global_step)
 
         self.log_dict({"val/" + key: loss_dict[key] for key in loss_dict}, logger=True, on_epoch=True)
 
@@ -536,7 +558,7 @@ class PokeMotionModelFC(pl.LightningModule):
         loss = outputs["loss"]
         loss_dict = outputs["loss_dict"]
 
-        self.log("d_ref_nll-val", torch.abs(loss_dict["ref_nll_loss"] - loss_dict["nll_loss"]), on_epoch=True, logger=True) # TODO key error "reference_nll_loss"
+        self.log("d_ref_nll-val", torch.abs(loss_dict["reference_nll_loss"] - loss_dict["nll_loss"]), on_epoch=True, logger=True)
         self.log("loss-val",loss,on_epoch=True,logger=True)
 
 
@@ -596,8 +618,8 @@ class PokeMotionModelFC(pl.LightningModule):
         self.first_stage_model.fvd_features_fake_x0.clear()
         self.first_stage_model.fvd_features_true_x0.clear()
 
-        if self.current_epoch % 3 == 0:
-            self.log_umap()
+        # if self.current_epoch % 3 == 0:
+        #     self.log_umap()
 
 
 
@@ -1212,6 +1234,7 @@ class FirstStageFCWrapperFixed(FirstStageFCWrapper):
 
     def __init__(self, config):
         super(FirstStageFCWrapperFixed, self).__init__(config)
+        self.eval()
 
     def train(self, mode: bool):
         """ avoid pytorch lighting auto set trian mode """
@@ -1227,6 +1250,7 @@ class FCBaselineFixed(FCBaseline):
 
     def __init__(self, config,dirs,train):
         super(FCBaselineFixed, self).__init__(config, dirs, train)
+        self.eval()
 
     def train(self, mode: bool):
         """ avoid pytorch lighting auto set trian mode """

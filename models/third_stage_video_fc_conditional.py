@@ -16,28 +16,26 @@ import pandas as pd
 import time
 import math
 
-from utils.evaluation import fig_matrix, flow_batch_to_img_batch
+from utils.evaluation import fig_matrix
 from models.modules.autoencoders.big_ae import BigAE
 # from models.first_stage_motion_model import FCBaseline
 from models.second_stage_video_fc import PokeMotionModelFC
 # from models.first_stage_motion_model import SpadeCondMotionModel
 from models.pretrained_models_fc import second_stage_models, flow_encoder_models
-# from models.modules.autoencoders.baseline_fc_models import FirstStageFCWrapper
-from models.modules.INN.INN import UnsupervisedTransformer3
+from models.modules.autoencoders.baseline_fc_models import FirstStageFCWrapper
+from models.modules.INN.INN import SupervisedTransformer
 from models.modules.INN.loss import FlowLoss
 # from models.modules.autoencoders.util import Conv2dTransposeBlock
 # from models.modules.INN.coupling_flow_alternative import AdaBelief
 # from utils.logging import make_flow_video_with_samples, log_umap, make_samples_and_samplegrid, save_video, make_transfer_grids_new, make_multipoke_grid
 from utils.general import linear_var, get_logger
-# from utils.metrics import FVD, calculate_FVD #, LPIPS,PSNR_custom,SSIM_custom, KPSMetric, metric_vgg16, compute_div_score,SampleLPIPS, SampleSSIM, compute_div_score_mse, compute_div_score_lpips
-# from utils.metrics import LPIPS,PSNR_custom,SSIM_custom,optical_flow_metric
-from utils.metrics import LPIPS, SSIM_custom, PSNR_custom, FIDInceptionModel, compute_fid, optical_flow_metric
+# from utils.metrics import FVD, calculate_FVD, LPIPS,PSNR_custom,SSIM_custom, KPSMetric, metric_vgg16, compute_div_score,SampleLPIPS, SampleSSIM, compute_div_score_mse, compute_div_score_lpips
+from utils.metrics import LPIPS,PSNR_custom,SSIM_custom,optical_flow_metric
 # from utils.posenet_wrapper import PoseNetWrapper
 # from models.pose_estimator.tools.infer import save_batch_image_with_joints
 import matplotlib.pyplot as plt
 
-
-class ThirdStageFlowFC(pl.LightningModule):
+class ThirdStageFlowFCConditional(pl.LightningModule):
 
     def __init__(self,config,dirs):
         super().__init__()
@@ -58,13 +56,7 @@ class ThirdStageFlowFC(pl.LightningModule):
 
         self.test_mode = self.config['general']['test']
         self.n_test_samples = self.config['testing']['n_samples_per_data_point']
-        if self.test_mode == 'realism':
-            # self.FVD = FVD(n_samples=self.config['logging']['n_fvd_samples'] if 'n_fvd_samples' in self.config[
-            #     'logging'] else 1000)
-            self.inception_model = FIDInceptionModel(normalize_range=True)
-            self.fid_features_real = []
-            self.fid_features_fake = []
-            self.n_it_fid = int(np.ceil(self.config["testing"]["n_samples_fid"] / self.config["data"]["test_batch_size"]))
+
 
         self.console_logger = get_logger()
 
@@ -97,10 +89,12 @@ class ThirdStageFlowFC(pl.LightningModule):
 
         self.__initialize_flow_encoder()
 
-        # self.config["architecture"]["flow_mid_channels"] = int(self.config["architecture"]["flow_mid_channels_factor"] * \
-        #                                                        self.config["architecture"]["flow_in_channels"])
+        self.config["architecture"]["flow_embedding_channels"] = self.second_stage_model.poke_emb_config["architecture"]["nf_max"]
+        self.config["architecture"]["flow_embedding_channels"] = 64
+        self.config["architecture"]["flow_mid_channels"] = int(config["architecture"]["flow_mid_channels_factor"] * \
+                                                               self.config["architecture"]["flow_in_channels"])
 
-        self.INN = UnsupervisedTransformer3(**config['architecture'])
+        self.INN = SupervisedTransformer(config['architecture'])
 
         self.loss_func = FlowLoss(spatial_mean=False, logdet_weight=1., radial=self.base_distribution=='radial')
 
@@ -124,6 +118,26 @@ class ThirdStageFlowFC(pl.LightningModule):
 
         self.second_stage_model = PokeMotionModelFCFixed.load_from_checkpoint(second_stage_ckpt,config=self.second_stage_config,
                                                                         train=False,strict=False,dirs=self.dirs)
+    def __initialize_poke_embedder(self):
+        dic = poke_embedder_models[self.config['poke_embedder']['name']]
+        # model_name = dic['model_name']
+        emb_ckpt = dic['ckpt']
+
+        # emb_config = path.join(self.config["general"]["base_dir"], "poke_encoder", "config", model_name, "config.yaml")
+        emb_config = path.join(*emb_ckpt.split('/')[:-2],'config.yaml').replace('ckpt','config')
+
+        with open(emb_config) as f:
+            self.poke_emb_config = yaml.load(f, Loader=yaml.FullLoader)
+        self.poke_embedder = FirstStageFCWrapperFixed(self.poke_emb_config)
+        assert self.poke_embedder.be_deterministic
+        state_dict = torch.load(emb_ckpt, map_location="cpu")
+        # remove keys from checkpoint which are not required
+        state_dict = {key[6:]: state_dict["state_dict"][key] for key in state_dict["state_dict"] if
+                      key[:5] == 'model'}
+        # load first stage model
+        m, u = self.poke_embedder.load_state_dict(state_dict, strict=False)
+        assert len(m) == 0, f'poke_embedder is missing keys {m}'
+        del state_dict
 
     def __initialize_flow_encoder(self):
         dic = flow_encoder_models[self.config['flow_encoder']['name']]
@@ -198,7 +212,7 @@ class ThirdStageFlowFC(pl.LightningModule):
             if self.current_epoch % 10 == 9:
                 self.weight_recon = self.weight_recon * 2
 
-    def forward_sample(self, batch, n_samples=1, n_logged_imgs=1, flow_input=None):
+    def forward_sample(self, batch, cond, n_samples=1, n_logged_imgs=1, flow_input=None):
         image_samples = []
         opt_flow_dim = self.flow_enc_config['architecture']['z_dim']
         with torch.no_grad():
@@ -207,7 +221,7 @@ class ThirdStageFlowFC(pl.LightningModule):
                     flow_input = self.make_flow_input(batch, reverse=True)
                 else:
                     assert n_samples==1, 'second pass will random sample and overwrite given input'
-                out = self.INN(flow_input[:n_logged_imgs], reverse=True)
+                out = self.INN(flow_input[:n_logged_imgs],cond[:n_logged_imgs], reverse=True)
                 flow_input = None
 
                 out, residual = out[:,:opt_flow_dim], out[:,opt_flow_dim:]
@@ -218,17 +232,19 @@ class ThirdStageFlowFC(pl.LightningModule):
 
         return image_samples, residual
 
-    def forward_density(self, batch):
+    def forward_density(self, batch, cond):
         flow_input = self.make_flow_input(batch, reverse=False)
         optical_flow_vector = flow_input.clone().detach() # hopefully triggers correctnesschecks if flow_input is changed inplace in INN
-        out, logdet = self.INN(flow_input.detach(), reverse=False)
+        out, logdet = self.INN(flow_input.detach(), cond, reverse=False)
         return out, logdet, optical_flow_vector
 
     def training_step(self, batch, batch_idx):
 
-        out, logdet, optical_flow_vec = self.forward_density(batch)
         with torch.no_grad():
-            out_hat, _  = self.second_stage_model.forward_density(batch)
+            out_hat, _, cond  = self.second_stage_model.forward_density(batch, return_cond=True)
+        # alternatively self.config["architecture"]["flow_embedding_channels"] for poke_embedder z_dim
+        poke_encoding = cond[:,-self.second_stage_model.poke_embedder.config['architecture']['z_dim']:]
+        out, logdet, optical_flow_vec = self.forward_density(batch, poke_encoding.detach())
 
         loss, loss_dict = self.loss_func(out, logdet)
         loss_recon = torch.nn.functional.mse_loss(out, out_hat, reduction='mean')
@@ -249,24 +265,43 @@ class ThirdStageFlowFC(pl.LightningModule):
                 n_samples = self.config["logging"]["n_samples"]
                 n_logged_images = self.config["logging"]["n_log_images"]
 
-                optical_flow_imgs, latent_residual = self.forward_sample(batch, n_samples, n_logged_images)
-                optical_flow_hat, _ = self.forward_sample(None, 1, 64, out_hat) # take 64 logged images for optical flow metric
+                optical_flow_imgs, latent_residual = self.forward_sample(batch, poke_encoding.detach(), n_samples, n_logged_images)
+                optical_flow_hat, _ = self.forward_sample(None, poke_encoding.detach(), 1, 64, out_hat) # take 64 logged images for optical flow metric
                 optical_flow_imgs.insert(0, optical_flow_hat[0]) # reconstructed extracted optical flow
                 tgt_imgs = batch['flow'][:n_logged_images]
                 optical_flow_imgs.insert(0, tgt_imgs)
                 captions = ["ground truth"] + ["extracted"] + ["sample"] * n_samples
 
-                img = fig_matrix(optical_flow_imgs, captions)
                 ############################################################################################################
-                # optical flow metric
+                if isinstance(batch['poke'], list):
+                    poke = batch["poke"][0]
+                else:
+                    poke = batch['poke']
+
+                ### optical flow reconstruction image
+                if len(poke_encoding.shape) == 4:
+                    poke_encoding = poke_encoding.squeeze(-1).squeeze(-1)
+                poke_enc_reconstruction = self.second_stage_model.poke_embedder.decoder([poke_encoding], None)
+                captions += ["poke_recon"]
+                optical_flow_imgs.append(poke_enc_reconstruction[:n_logged_images])
+
+                ### poke image
+                captions += ["poke"]
+                optical_flow_imgs += [poke[:n_logged_images]]
+
+                #### optical flow metric
                 if len(optical_flow_vec.shape) == 4:
                     optical_flow_vec = optical_flow_vec.squeeze(-1).squeeze(-1)
                 optical_flow = self.flow_encoder.decode(optical_flow_vec[:,:self.flow_enc_config['architecture']['z_dim']])
                 # unpack optical_flow_hat since it is a list of batches
                 optical_flow_errors = optical_flow_metric(optical_flow_hat[0][:64], optical_flow[:64])
-                self.log_dict({"train/" + key: optical_flow_errors[key] for key in optical_flow_errors}, logger=True, on_epoch=True, on_step=False)
+                optical_flow_errors_poke_recon = optical_flow_errors = optical_flow_metric(poke_enc_reconstruction[:64], optical_flow[:64])
+
+                self.log_dict({"train/" + key: optical_flow_errors[key] for key in optical_flow_errors}, logger=True, on_epoch=True, on_step=True)
+                self.log_dict({"train/" + key + "poke_recon": optical_flow_errors_poke_recon[key] for key in optical_flow_errors_poke_recon}, logger=True, on_epoch=True, on_step=True)
+
                 ############################################################################################################
-                # self.logger.experiment.history._step = self.global_step
+                img = fig_matrix(optical_flow_imgs, captions)
                 self.logger.experiment.log({"Image Grid train set": wandb.Image(img,
                                                                                 caption=f"Image Grid train @ it #{self.global_step}")}
                                            , step=self.global_step, commit=False)
@@ -312,9 +347,11 @@ class ThirdStageFlowFC(pl.LightningModule):
 
 
     def validation_step(self, batch, batch_id):
+        out_hat, _, cond = self.second_stage_model.forward_density(batch, return_cond=True)
+        # TODO only works for poke and image conditioning in second stage for now
+        poke_encoding = cond[:,-self.second_stage_model.poke_embedder.config['architecture']['z_dim']:]
 
-        out, logdet, optical_flow_vec = self.forward_density(batch)
-        out_hat, _ = self.second_stage_model.forward_density(batch)
+        out, logdet, optical_flow_vec = self.forward_density(batch, poke_encoding.detach())
 
         loss, loss_dict = self.loss_func(out, logdet)
         loss_recon = torch.nn.functional.mse_loss(out, out_hat, reduction='mean')
@@ -329,23 +366,40 @@ class ThirdStageFlowFC(pl.LightningModule):
             n_samples = self.config["logging"]["n_samples"]
             n_logged_images = self.config["logging"]["n_log_images"]
 
-            optical_flow_imgs, latent_residual = self.forward_sample(batch, n_samples, n_logged_images)
-            optical_flow_hat, _ = self.forward_sample(None, 1, 64, out_hat) # take 64 logged images for optical flow metric
+            optical_flow_imgs, latent_residual = self.forward_sample(batch, poke_encoding.detach(), n_samples, n_logged_images)
+            optical_flow_hat, _ = self.forward_sample(None, poke_encoding.detach(), 1, 64, out_hat) # take 64 logged images for optical flow metric
             optical_flow_imgs.insert(0, optical_flow_hat[0][:n_logged_images])
             tgt_imgs = batch['flow'][:n_logged_images]
             optical_flow_imgs.insert(0, tgt_imgs)
             captions = ["ground truth"] + ["extracted"] + ["sample"] * n_samples
-            img = fig_matrix(optical_flow_imgs, captions)
             ############################################################################################################
-            # optical flow metric
+            if isinstance(batch['poke'], list):
+                poke = batch["poke"][0]
+            else:
+                poke = batch['poke']
+
+            ### optical flow poke encoder model
+            if len(poke_encoding.shape) == 4:
+                poke_encoding = poke_encoding.squeeze(-1).squeeze(-1)
+            poke_enc_reconstruction = self.second_stage_model.poke_embedder.decoder(
+                [poke_encoding], None)
+            captions += ["poke_recon"]
+            optical_flow_imgs.append(poke_enc_reconstruction[:n_logged_images])
+
+            ### poke image
+            captions += ["poke"]
+            optical_flow_imgs += [poke[:n_logged_images]]
+            ### optical flow metric
             if len(optical_flow_vec.shape) == 4:
                 optical_flow_vec = optical_flow_vec.squeeze(-1).squeeze(-1)
             optical_flow = self.flow_encoder.decode(optical_flow_vec[:,:self.flow_enc_config['architecture']['z_dim']])
             # unpack optical_flow_hat since it is a list of batches
             optical_flow_errors = optical_flow_metric(optical_flow_hat[0][:64], optical_flow[:64])
+            # optical_flow_errors_poke_recon = optical_flow_metric(poke_enc_reconstruction[:64], optical_flow[:64])
             self.log_dict({"val/" + key: optical_flow_errors[key] for key in optical_flow_errors}, logger=True, on_epoch=True, on_step=False)
             self.log("val-EE_R3", optical_flow_errors['endpoint_error']['3.0']) # for checkpoint saving
             ############################################################################################################
+            img = fig_matrix(optical_flow_imgs, captions)
             # self.logger.experiment.history._step = self.global_step
             self.logger.experiment.log({"Image Grid val set": wandb.Image(img,
                                                                             caption=f"Image Grid val @ it #{self.global_step}")}
@@ -364,67 +418,61 @@ class ThirdStageFlowFC(pl.LightningModule):
         self.eval()
         n_logged_images = self.config["logging"]["n_log_images"]
         with torch.no_grad():
-            out, logdet, optical_flow_vec = self.forward_density(batch)
-            out_hat, _ = self.second_stage_model.forward_density(batch)
+            out_hat, _, cond = self.second_stage_model.forward_density(batch, return_cond=True)
+            poke_encoding = cond[:, -self.second_stage_model.poke_embedder.config['architecture']['z_dim']:]
+
+            out, logdet, optical_flow_vec = self.forward_density(batch, poke_encoding.detach())
 
             if self.test_mode == 'accuracy':
                 # n_samples = self.config["logging"]["n_samples"]
                 # n_logged_images = self.config["logging"]["n_log_images"]
 
-                optical_flow_imgs, latent_residual = self.forward_sample(batch, self.n_test_samples, n_logged_images)
-                optical_flow_hat, _ = self.forward_sample(None, 1, 64,
+                optical_flow_imgs, latent_residual = self.forward_sample(batch, poke_encoding.detach(), n_samples,
+                                                                         n_logged_images)
+                optical_flow_hat, _ = self.forward_sample(None, poke_encoding.detach(), 1, 64,
                                                           out_hat)  # take 64 logged images for optical flow metric
                 optical_flow_imgs.insert(0, optical_flow_hat[0][:n_logged_images])
                 tgt_imgs = batch['flow'][:n_logged_images]
-                pokes = batch['poke'][0][:n_logged_images] if isinstance(batch['poke'], list) else batch['poke'][:n_logged_images]
-                x0 = batch["images"][:n_logged_images ,0]
-
                 optical_flow_imgs.insert(0, tgt_imgs)
-                captions = ["ground truth"] + ["extracted"] + ["sample"] * self.n_test_samples
-                img = fig_matrix(optical_flow_imgs, captions)
+                captions = ["ground truth"] + ["extracted"] + ["sample"] * n_samples
                 ############################################################################################################
-                # optical flow metric
+                if isinstance(batch['poke'], list):
+                    poke = batch["poke"][0]
+                else:
+                    poke = batch['poke']
+
+                ### optical flow poke encoder model
+                if len(poke_encoding.shape) == 4:
+                    poke_encoding = poke_encoding.squeeze(-1).squeeze(-1)
+                poke_enc_reconstruction = self.second_stage_model.poke_embedder.decoder(
+                    [poke_encoding], None)
+                captions += ["poke_recon"]
+                optical_flow_imgs.append(poke_enc_reconstruction[:n_logged_images])
+
+                ### poke image
+                captions += ["poke"]
+                optical_flow_imgs += [poke[:n_logged_images]]
+                ### optical flow metric
                 if len(optical_flow_vec.shape) == 4:
                     optical_flow_vec = optical_flow_vec.squeeze(-1).squeeze(-1)
                 optical_flow = self.flow_encoder.decode(
                     optical_flow_vec[:, :self.flow_enc_config['architecture']['z_dim']])
                 # unpack optical_flow_hat since it is a list of batches
-                optical_flow_errors = optical_flow_metric(optical_flow_hat[0][:64], optical_flow[:64])
-                # self.log_dict({"val/" + key: optical_flow_errors[key] for key in optical_flow_errors}, logger=True,
-                #               on_epoch=True, on_step=False)
-                # for name, value in optical_flow_errors['endpoint_error'].items():
-                #     self.console_logger.info(f'EE: {name} px deviation ratio r= {value}')
-                # for name, value in optical_flow_errors['angular_error'].items():
-                #     self.console_logger.info(f'AE: {name} degree deviation ratio r= {value}')
-
+                optical_flow_errors = optical_flow_metric(optical_flow_hat[0][:], optical_flow[:])
                 ############################################################################################################
 
                 plt.close('all')
-                return [optical_flow_errors, optical_flow_imgs, pokes, x0]
-            if self.test_mode == 'realism':
-                optical_flow_hat, _ = self.forward_sample(None, 1, None, out_hat)
-                optical_flow_hat = optical_flow_hat[0] # forward_sample returns list of batches
-                if batch_id < self.n_it_fid:
-                    x = batch["flow"]
-                    rec = optical_flow_hat
-                    x = torch.from_numpy(flow_batch_to_img_batch(x)).to(self.device)
-                    rec = torch.from_numpy(flow_batch_to_img_batch(rec)).to(self.device)
-                    self.fid_features_real.append(self.inception_model(x).cpu().numpy())
-                    self.fid_features_fake.append(self.inception_model(rec).cpu().numpy())
+                return optical_flow_errors, optical_flow_imgs
+            if self.test_mode == '':
+                pass
             else:
                 raise ValueError(f'No such test {self.test_mode}')
-
     def test_epoch_end(self, outputs):
         n_logged_images = self.config["logging"]["n_log_images"]
-        n_pokes = self.trainer.datamodule.dset_val.config['n_pokes']
-
         self.print(f'******************* TEST SUMMARY on {self.trainer.datamodule.dset_val.__class__.__name__} FOR {n_logged_images} SAMPLES *******************')
         if self.test_mode == "accuracy":
             errs = [o[0] for o in outputs]
-            pokes = torch.cat([o[2]for o in outputs], dim=0).cpu().numpy()
-            x0 = torch.cat([o[3] for o in outputs], dim=0).cpu().numpy()
-            exmpls = torch.cat([torch.stack(o[1]) for o in outputs], dim=-4) # 5 categories, each has multiple flow fields of shape [2,64,64]
-            exmpls = np.array([flow_batch_to_img_batch(example) for example in exmpls]) # 5 categories, each has multuple images of shape [3,64,64]
+            exmpls = np.concatenate([o[1] for o in outputs])
 
             for error_type in errs[0].keys():
                 print(f"{error_type}")
@@ -432,24 +480,15 @@ class ThirdStageFlowFC(pl.LightningModule):
                     result = 0.
                     for error in errs:
                         result += error[error_type][key]
-                    print(f"    R{key} = {result/len(errs)}")
+                    print(f"    R{key} = {result / len(errs)}")
 
+            n_pokes = self.trainer.datamodule.dset_val.config['n_pokes']
 
-
-            savepath = path.join(self.dirs['generated'], 'accuracy')
+            exmpls = exmpls.cpu().numpy()
+            savepath = path.join(self.dirs['generated'], 'diversity')
             makedirs(savepath, exist_ok=True)
 
             np.save(path.join(savepath, f'samples_diversity_{n_pokes}_pokes.npy'), exmpls)
-            np.save(path.join(savepath, f'pokes_diversity_{n_pokes}_pokes.npy'), pokes)
-            np.save(path.join(savepath, f'starting_frame_{n_pokes}_pokes.npy'), x0)
-            with open(path.join(savepath,f'error_result_{n_pokes}_pokes.yaml'), 'w') as stream:
-                yaml.dump(errs, stream)
-
-        if self.test_mode == "realism":
-            fid = compute_fid(self.fid_features_real, self.fid_features_fake)
-            print(f" FID score for {n_pokes} pokes = {fid:.3f}")
-            self.fid_features_fake.clear()
-            self.fid_features_real.clear()
 
         # if self.test_mode == 'fvd':
         #
@@ -536,3 +575,18 @@ class PokeMotionModelFCFixed(PokeMotionModelFC):
         destination._metadata = OrderedDict()
         return destination
 
+class FirstStageFCWrapperFixed(FirstStageFCWrapper):
+
+    def __init__(self, config):
+        super(FirstStageFCWrapperFixed, self).__init__(config)
+        self.eval()
+
+    def train(self, mode: bool):
+        """ avoid pytorch lighting auto set trian mode """
+        return super().train(False)
+
+    def state_dict(self, destination, prefix, keep_vars):
+        """ avoid pytorch lighting auto save params """
+        destination = OrderedDict()
+        destination._metadata = OrderedDict()
+        return destination

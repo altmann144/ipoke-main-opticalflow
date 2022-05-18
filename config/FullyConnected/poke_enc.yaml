@@ -1,13 +1,13 @@
 general:
   experiment: poke_encoder_FC
-  run_name: poke_encoder_fc-64-bs128 #sharedmodel-aug-test-bigae-256-dis-logvar-bs96-moreaug
+#  run_name: poke_encoder_fc-64-bs128 #sharedmodel-aug-test-bigae-256-dis-logvar-bs96-moreaug
   profiler: False
   debug: False
   base_dir: "/export/compvis-nfs/user/daltmann/scratch/"
   seed: 42
 
 data:
-  dataset: PlantDataset
+  dataset: IperDataset
   poke_size: 5
   #subsample_step: 2
   max_frames: 10
@@ -21,7 +21,7 @@ data:
   augment_c: 0.5
   augment_h: 0.15
   augment_s: 0.4
-  aug_deg: 30 # for iper use 0, for plants use 30°
+  aug_deg: 0 # for iper use 0, for plants use 30°
   # translation is (vertical, horizontal)
   aug_trans: !!python/tuple [0.1,0.1]
   split: official
@@ -37,13 +37,13 @@ data:
 
 
 training:
-  lr: 0.001
+  lr: 0.01
   weight_decay: 0
   min_acc_batch_size: 3
   max_batches_per_epoch: 2000
   max_val_batches: 200
   profiler: False
-  n_epochs: 50
+  n_epochs: 100
   w_kl: 1
   val_every: 1.
 
@@ -57,16 +57,16 @@ testing:
 architecture:
   conv: False
   nf_in: 2
-  nf_max: 64
+  nf_max: 64 # if double_depth then nf_max is also doubled in the conv_encoder before fc layer
 #  min_spatial_size: 8
   deterministic: True
   flow_ae: False
   poke_and_image: True
-
+  double_depth: True
 
 logging:
   n_val_img_batches: 4
   log_train_prog_at: 500
-  n_saved_ckpt: 5
+  n_saved_ckpt: 2
   n_log_images: 8
 

@@ -26,7 +26,7 @@ class FirstStageWrapper(nn.Module):
         return self.decoder([enc],del_shape=False)
 
 class ConvEncoder(nn.Module):
-    def __init__(self, nf_in, nf_max, n_stages, variational=False, norm_layer = "group", layers=None, spectral_norm=True):
+    def __init__(self, nf_in, nf_max, n_stages, variational=False, norm_layer = "group", layers=None, spectral_norm=True, double_depth=False):
         super().__init__()
 
         self.variational = variational
@@ -56,6 +56,21 @@ class ConvEncoder(nn.Module):
                 )
             )
             nf = min(nf * 2, nf_max) if layers is None else layers[n+1]
+
+            if double_depth:
+                ##########################
+                # adds another ResBlock without changing width or channel amount
+                blocks.append(
+                    ResBlock(
+                        nf,
+                        nf,
+                        stride=1,
+                        norm=norm_layer,
+                        activation=act,
+                        snorm=spectral_norm
+                    )
+                )
+                ##########################
             self.depths.insert(0,nf)
 
         self.nf_in_bn = nf

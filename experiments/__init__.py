@@ -6,6 +6,7 @@ from experiments.first_stage_video import FirstStageSequenceModel
 from experiments.second_stage_video import SecondStageVideoModel
 from experiments.second_stage_video_fc import SecondStageVideoModelFC
 from experiments.third_stage_flow_encoder_fc import ThirdStageFlowEncoderFC
+from experiments.third_stage_video_fc import ThirdStageVideoModelFC
 
 
 
@@ -19,6 +20,7 @@ __experiments__ = {
     "img_encoder_fc": FirstStageImageModelFC,
     "second_stage_fc": SecondStageVideoModelFC,
     "flow_encoder_fc": ThirdStageFlowEncoderFC,
+    "third_stage_fc": ThirdStageVideoModelFC,
 }
 
 

@@ -61,7 +61,7 @@ class ImgAE(pl.LightningModule):
 
     def setup(self, stage: str):
         assert isinstance(self.logger, WandbLogger)
-        self.logger.watch(self,log="None")
+        self.logger.watch(self,log=None)
 
 
     def train_disc(self,x_in_true,x_in_fake,opt):
@@ -273,7 +273,7 @@ class ImgAE(pl.LightningModule):
         sched_d = lr_scheduler.ReduceLROnPlateau(opt_g, mode="min", factor=.1, patience=0, min_lr=1e-8,
                                                  threshold=0.001, threshold_mode='rel')
 
-        return [opt_g,opt_d], [{'scheduler':sched_g,'monitor':"val/loss","interval":1,'reduce_on_plateau':True,'strict':True},
-                               {'scheduler':sched_d,'monitor':"val/loss","interval":1,'reduce_on_plateau':True,'strict':True}]
+        return [opt_g,opt_d], [{'scheduler':sched_g,'monitor':"lpips-val","interval":1,'reduce_on_plateau':True,'strict':True},
+                               {'scheduler':sched_d,'monitor':"lpips-val","interval":1,'reduce_on_plateau':True,'strict':True}]
         # return ({'optimizer': opt_g,'lr_scheduler':sched_g,'monitor':"loss-val","interval":1,'reduce_on_plateau':True,'strict':True},
                 # {'optimizer': opt_d,'lr_scheduler':sched_d,'monitor':"loss-val","interval":1,'reduce_on_plateau':True,'strict':True})

@@ -31,15 +31,18 @@ class BaselineFCEncoder(ConvEncoder):
         self.config = config
         n_stages = int(
             np.log2(self.config["data"]["spatial_size"][0] // 4))
-        nf_max = self.config['architecture']['nf_max']
+        nf_max = int(self.config['architecture']['nf_max'])
         nf_in = self.config['architecture']['nf_in']
+        double_depth = self.config['architecture']['double_depth'] if 'double_depth' in self.config['architecture'] else False
         if "poke_and_image" in self.config["architecture"] and self.config["architecture"]["poke_and_image"]:
             nf_in+=3
         #always determinstic
         self.deterministic = True
-        super().__init__(nf_in,nf_max,n_stages,variational=not self.deterministic)
-
-        self.make_fc = NormConv2d(nf_max,nf_max,4,padding=0)
+        multiplier = 1
+        if double_depth:
+            multiplier = 2
+        super().__init__(nf_in,nf_max*multiplier,n_stages,variational=not self.deterministic, double_depth=double_depth)
+        self.make_fc = NormConv2d(nf_max*multiplier,nf_max,4,padding=0)
 
     def forward(self, x):
         # only use output as model is not varaitional

@@ -198,11 +198,11 @@ class FlowMotion(pl.LightningModule):
         self.log("learning_rate",lr,on_step=True,on_epoch=False,prog_bar=True,logger=True)
 
         # backward training
-        enc_vae_hat = self.backward_sample(out_hat)[:,:self.config['architecture']['nf_max']]
-        enc_vae = enc_vae[:,:self.config['architecture']['nf_max']]
-        loss_enc_vae_recon = F.mse_loss(enc_vae_hat, enc_vae, reduction='mean')
-        loss += loss_enc_vae_recon * 100
-        self.log('vae_recon', loss_enc_vae_recon, on_step=True,on_epoch=False,prog_bar=True,logger=True)
+        # enc_vae_hat = self.backward_sample(out_hat)[:,:self.config['architecture']['nf_max']]
+        # enc_vae = enc_vae[:,:self.config['architecture']['nf_max']]
+        # loss_enc_vae_recon = F.mse_loss(enc_vae_hat, enc_vae, reduction='mean')
+        # loss += loss_enc_vae_recon * 100
+        # self.log('vae_recon', loss_enc_vae_recon, on_step=True,on_epoch=False,prog_bar=True,logger=True)
         if self.global_step % self.config["logging"]["log_train_prog_at"] == 0:
             self.INN.eval()
             n_samples = self.config["logging"]["n_samples"]

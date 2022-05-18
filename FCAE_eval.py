@@ -73,7 +73,7 @@ if __name__ == '__main__':
     print('gpu: ', str(gpus))
     config_path = args.config
     with open(config_path, 'r') as stream:
-        config = yaml.safe_load(stream)
+        config = yaml.safe_load(stream, Loader=yaml.FullLoader)
 
     datakeys = ['flow']
     config['data']['batch_size'] = batch_size

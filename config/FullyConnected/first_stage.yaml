@@ -6,7 +6,7 @@ general:
   seed: 42
 
 data:
-  dataset: PlantDataset
+  dataset: IperDataset
   poke_size: 1
 #  valid_lags: 1
   #subsample_step: 2
@@ -21,7 +21,7 @@ data:
   augment_c: 0.5
   augment_h: 0.15
   augment_s: 0.4
-  aug_deg: 15
+  aug_deg: 0
   aug_trans: !!python/tuple [0.1,0.1]
   split: official # see in the file data/flow_dataset.py
   filter_flow: False
@@ -32,13 +32,13 @@ data:
 
 training:
   lr: 0.0005
-  weight_decay: 0.00001
+  weight_decay: 1.0e-5
   min_acc_batch_size: 3
   max_batches_per_epoch: 2000
   max_val_batches: 200
   profiler: False
   n_epochs: 1000
-  w_kl: 0.0001
+  w_kl: 5.0e-6 # for z_dim 128 : 1.0e-07
   w_l1: 10
   w_vgg: 10
   val_every: 1000
@@ -52,7 +52,7 @@ architecture:
 # ENC and DEC need 4 layers for 64x64 and 5 layers for 128x128 video spatial size
   ENC_M_channels: [64, 128, 256, 256, 256] # for models with for spatial video size 64x64 remove last entry
   decoder_factor: 32
-  z_dim: 256 # number of channels for the video representation on which the invertible model will be trained later on
+  z_dim: 128 # number of channels for the video representation on which the invertible model will be trained later on
   norm: 'group'
   spectral_norm: True
   running_stats: False
@@ -68,7 +68,7 @@ d_t:
   patch_temp_disc: False
   gp_weight: 1.
   fmap_weight: 1.
-  gen_weight: 0.5
+  gen_weight: 1.
   bce_loss: False
   num_classes: 1
   pretrain: 10
@@ -82,13 +82,13 @@ d_s:
   fmap_weight: 1.
   pretrain: 10
   n_examples: 16
-  gen_weight: 0.2
+  gen_weight: 1.0
   gp_1: False
 
 logging:
   n_val_img_batches: 4
   log_train_prog_at: 300
-  n_saved_ckpt: 5
+  n_saved_ckpt: 1
   n_samples_fvd: 1000
   bs_i3d: 8
   n_logged_img: 8

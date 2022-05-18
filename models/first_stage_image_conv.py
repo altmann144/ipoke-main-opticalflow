@@ -66,7 +66,7 @@ class ConvAEModel(pl.LightningModule):
 
     def setup(self, stage: str):
         assert isinstance(self.logger, WandbLogger)
-        self.logger.watch(self,log="None")
+        self.logger.watch(self,log=None)
 
 
     def forward(self,x):

@@ -73,14 +73,14 @@ class PlantDataset(BaseDataset):
             self.data["flow_paths"] = [natsorted(d) for d in self.data["flow_paths"]]
 
         # make absolute image and flow paths
-        # if self.datapath != "":
-        #     self.data["img_path"] = [
-        #         path.join(self.datapath, p if not p.startswith("/") else p[1:]) for p in self.data["img_path"]
-        #     ]
-        #     self.data["flow_paths"] = [
-        #         [path.join(self.datapath, f if not f.startswith("/") else f[1:]) for f in fs]
-        #         for fs in self.data["flow_paths"]
-        #     ]
+        if self.datapath != "":
+            self.data["img_path"] = [
+                path.join(self.datapath, p if not p.startswith("/") else p[1:]) for p in self.data["img_path"]
+            ]
+            self.data["flow_paths"] = [
+                [path.join(self.datapath, f if not f.startswith("/") else f[1:]) for f in fs]
+                for fs in self.data["flow_paths"]
+            ]
 
         # convert to numpy array
         self.data = {key: np.asarray(self.data[key]) for key in self.data}
@@ -393,14 +393,18 @@ class IperDataset(PlantDataset):
 
         # if self.config["spatial_size"][0] <= 256:
             # self.datapath = "/export/scratch/compvis/datasets/iPER/processed_256_resized/"
-        self.datapath = 'data/IperDataset'
-        if path.exists(path.join(self.datapath,"meta_kp_nn.p")):
-            self.metafilename = "meta_kp_nn"
-            self.logger.info('Loading meta data with keypoints and nearest neighbors.')
-        else:
-            self.metafilename = "meta_kp"
-            self.logger.info('Loading meta data with keypoints.')
-            #self.metafilename = "meta_frange_with_keypoints_weights_"
+        # self.datapath = 'data/IperDataset'
+        self.metafilename = "meta_kp_nn"
+        self.datapath = "/export/scratch/compvis/datasets/iPER/processed_256_resized/"
+        self.logger.info('Loading meta data.')
+
+        # if path.exists(path.join(self.datapath,"meta_kp_nn.p")):
+        #     self.metafilename = "meta_kp_nn"
+        #     self.logger.info('Loading meta data with keypoints and nearest neighbors.')
+        # else:
+        #     self.metafilename = "meta_kp"
+        #     self.logger.info('Loading meta data with keypoints.')
+        #     #self.metafilename = "meta_frange_with_keypoints_weights_"
         # else:
         #     self.datapath = "/export/scratch/compvis/datasets/iPER/processed/"
         #     self.metafilename = "iper_full"

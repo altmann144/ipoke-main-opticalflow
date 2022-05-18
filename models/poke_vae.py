@@ -101,7 +101,7 @@ class PokeVAE(pl.LightningModule):
     def setup(self, stage: str):
         if self.test_mode == 'none':
             assert isinstance(self.logger, WandbLogger)
-            self.logger.watch(self,log="all")
+            self.logger.watch(self,log=None)
         
     def on_train_start(self):
         if self.use_kl_annealing:

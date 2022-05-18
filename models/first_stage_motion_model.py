@@ -89,7 +89,7 @@ class MotionModel(pl.LightningModule):
 
     def setup(self, stage: str):
         assert isinstance(self.logger, WandbLogger)
-        self.logger.watch(self,log='None')
+        self.logger.watch(self,log=None)
 
     def forward(self,X):
 
@@ -268,8 +268,7 @@ class MotionModel(pl.LightningModule):
         else:
             kl_loss = KL(mu, logvar)
 
-        loss = self.config["training"]["w_vgg"] * vgg_loss + self.config["training"]["w_kl"] * kl_loss \
-               + self.config["training"]["w_l1"] * l1_loss
+        loss = self.config["training"]["w_vgg"] * vgg_loss + self.config["training"]["w_kl"] * kl_loss + self.config["training"]["w_l1"] * l1_loss
 
 
         self.manual_backward(loss,opt_g)

@@ -13,10 +13,75 @@ from collections import namedtuple
 from tqdm import tqdm
 from lpips import LPIPS as lpips_net
 
-
 from utils.logging import make_nn_var_plot
 
+###################################################################################
+# optical flow metrics
+def optical_flow_metric(batch1, batch2):
+    R= {'angular_error': {'5.0': torch.Tensor(),
+                          '10.0': torch.Tensor(),
+                          '15.0': torch.Tensor()
+                          },
+       'endpoint_error': {'1.0': torch.Tensor(),
+                          '2.0': torch.Tensor(),
+                          '3.0': torch.Tensor(),
+                          '5.0': torch.Tensor()
+                          },
+       # 'endpoint_error_normalized': {'0.5': [],
+       #                               '1.0': [],
+       #                               '2.0': []}
+           }
+    r1, r2, r3 = angular_metric(batch1, batch2)
+    R['angular_error']['5.0'] = r1
+    R['angular_error']['10.0'] = r2
+    R['angular_error']['15.0'] = r3
+    r1, r2, r3, r4 = endpoint_metric(batch1, batch2)
+    R['endpoint_error']['1.0'] = r1
+    R['endpoint_error']['2.0'] = r2
+    R['endpoint_error']['3.0'] = r3
+    R['endpoint_error']['5.0'] = r4
+    return R
 
+def angular_metric(batch1, batch2):
+    '''
+    returns R2.5, R5.0, R10.0 which are the portions of vectors with at least 2.5, 5 and 10 degrees angular deviation
+    '''
+    AE = angularerror(batch1, batch2)
+    R_temp = AE[AE > 5. * np.pi / 180] # masking returns flat tensor
+    r1 = R_temp.numel() / AE.numel()
+    R_temp = R_temp[R_temp > 10. * np.pi / 180]
+    r2 = R_temp.numel() / AE.numel()
+    R_temp = R_temp[R_temp > 15. * np.pi / 180]
+    r3 = R_temp.numel() / AE.numel()
+    return r1, r2, r3
+
+def endpoint_metric(batch1, batch2):
+    '''
+        returns R0.5, R1.0, R2.0 which are the portions of of vectors with at least a 0.5, 1 and 2 pixels deviation
+        '''
+    EE = endpointerror(batch1, batch2)
+    R_temp = EE[EE > 1.0]
+    r1 = R_temp.numel() / EE.numel()
+    R_temp = R_temp[R_temp > 2.0]
+    r2 = R_temp.numel() / EE.numel()
+    R_temp = R_temp[R_temp > 3.0]
+    r3 = R_temp.numel() / EE.numel()
+    R_temp = R_temp[R_temp > 5.0]
+    r4 = R_temp.numel() / EE.numel()
+    return r1, r2, r3, r4
+
+def angularerror(batch1, batch2):
+    # append third channel with unit vectors for stability
+    batch1 = torch.nn.functional.pad(batch1, [0, 0, 0, 0, 0, 1], "constant", 1.)
+    batch2 = torch.nn.functional.pad(batch2, [0, 0, 0, 0, 0, 1], "constant", 1.)
+    AE = torch.arccos(torch.sum(batch1 * batch2, dim=1, keepdim=True) / (
+                torch.norm(batch1, dim=1, keepdim=True) * torch.norm(batch2, dim=1, keepdim=True)))
+    return AE
+
+def endpointerror(batch1, batch2):
+    EE = torch.norm(batch1 - batch2, dim=1, keepdim=True)
+    return EE
+###################################################################################
 class metric_vgg16(torch.nn.Module):
     def __init__(self, requires_grad=False, pretrained=True):
         super().__init__()

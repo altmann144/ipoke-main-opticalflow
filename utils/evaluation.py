@@ -22,12 +22,12 @@ def endpoint_error(gt, pred):
 
 
 def fig_matrix(batches: list, captions):
-    # remember to use plt.close('all') in lightning module
+    # remember to call plt.close('all') in lightning module
     n = len(batches)
     m = len(batches[0])
     fig, axes = plt.subplots(m, n, sharex=True, sharey=True)
-    fig.set_figheight(16)
-    fig.set_figwidth(3)
+    fig.set_figheight(10)
+    fig.set_figwidth(10)
     for i in range(n):
         images = batches[i].detach().cpu().numpy()
         for j in range(m):
@@ -52,3 +52,18 @@ def color_fig(batches: list, captions):
             axes[j,i].imshow(x)
             axes[j,i].title.set_text(captions[i])
     return fig
+
+def flow_batch_to_img_batch(batch):
+    """ input torch tensor with shape BxCxHxW
+    output: numpy array with shape BxCxHxW """
+    batch = batch.transpose(1,3) # 0123 -> 0321 -> 0231
+    batch = batch.transpose(1,2).cpu().numpy()
+
+    shape = list(batch.shape)
+    shape[-1] += 1
+    out = np.zeros(shape, dtype=np.float32)
+    for i in range(batch.shape[0]):
+        batch[np.isnan(batch)] = 0
+        out[i] = flow_vis.flow_to_color(batch[i])
+    out = out.transpose([0,3,1,2])
+    return out

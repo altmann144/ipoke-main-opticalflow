@@ -47,7 +47,9 @@ class PokeAE(pl.LightningModule):
 
     def setup(self, stage: str):
         assert isinstance(self.logger, WandbLogger)
-        self.logger.experiment.watch(self, log="None")
+        # self.logger.experiment.watch(self, log="None")
+        self.logger.watch(self,log=None)
+
 
     def training_step(self, batch, batch_idx):
         if isinstance(batch['poke'], list):
@@ -65,27 +67,31 @@ class PokeAE(pl.LightningModule):
         poke_in = flow if self.flow_ae else poke
 
         rec = self.model(poke_in)
-        rec_loss = torch.abs(flow.contiguous() - rec.contiguous())
+        rec_loss = torch.abs(flow.contiguous() - rec.contiguous()).mean()
 
         zeros = torch.zeros((flow.size(0), 1, *flow.shape[-2:]), device=self.device)
-        p_loss = self.vgg_loss(torch.cat([flow, zeros], 1).contiguous(), torch.cat([rec, zeros], 1).contiguous())
+        p_loss = self.vgg_loss(torch.cat([flow, zeros], 1).contiguous(), torch.cat([rec, zeros], 1).contiguous()).mean()
         # equal weighting of l1 and perceptual loss
-        rec_loss = rec_loss + self.perc_weight * p_loss
+
+        loss = rec_loss + self.perc_weight * p_loss
 
 
 
-        nll_loss = rec_loss / torch.exp(self.logvar) + self.logvar
-        nll_loss = torch.sum(nll_loss) / nll_loss.shape[0]
+        # nll_loss = nll_loss / torch.exp(self.logvar) + self.logvar
+        # nll_loss = torch.sum(nll_loss) / nll_loss.shape[0]
 
-        loss = nll_loss
+        # loss = nll_loss
 
-        loss_dict = {"train/loss": loss, "train/logvar": self.logvar.detach(), "train/nll_loss": nll_loss, }
+        loss_dict = {"train/loss": loss.detach(),
+                     "train/logvar": self.logvar.detach(),
+                     "train/perceptual": p_loss.detach(),
+                     "train/p_weight": self.perc_weight}
         self.log_dict(loss_dict, logger=True, on_epoch=True, on_step=True)
         self.log("global step", self.global_step)
         self.log("learning rate", self.optimizers().param_groups[0]["lr"], on_step=True, logger=True)
 
-        self.log("overall_loss", loss, prog_bar=True, logger=False)
-        self.log("nll_loss", nll_loss, prog_bar=True, logger=False)
+        self.log("overall_loss", loss.detach(), prog_bar=True, logger=False)
+        self.log("rec_loss", rec_loss.detach(), prog_bar=True, logger=False)
 
         if self.global_step % self.config["logging"]["log_train_prog_at"] == 0:
             flow_orig = batch["original_flow"].detach()
@@ -128,22 +134,22 @@ class PokeAE(pl.LightningModule):
         poke_in = flow if self.flow_ae else poke
         with torch.no_grad():
             rec = self.model(poke_in)
-            rec_loss = torch.abs(flow.contiguous() - rec.contiguous())
+            rec_loss = torch.abs(flow.contiguous() - rec.contiguous()).mean()
 
             zeros = torch.zeros((flow.size(0), 1, *flow.shape[-2:]), device=self.device)
             f3 = torch.cat([flow, zeros], 1).contiguous()
             r3 = torch.cat([rec, zeros], 1).contiguous()
-            p_loss = self.vgg_loss(f3, r3)
+            p_loss = self.vgg_loss(f3, r3).mean()
             # equal weighting of l1 and perceptual loss
-            rec_loss = rec_loss + self.perc_weight * p_loss
+            loss = rec_loss + self.perc_weight * p_loss
 
 
-            nll_loss = rec_loss / torch.exp(self.logvar) + self.logvar
-            nll_loss = torch.sum(nll_loss) / nll_loss.shape[0]
-            loss = nll_loss
+            # nll_loss = rec_loss / torch.exp(self.logvar) + self.logvar
+            # nll_loss = torch.sum(nll_loss) / nll_loss.shape[0]
+            # loss = nll_loss
 
         log_dict = {"val/loss": loss, "val/logvar": self.logvar.detach(),
-                    "val/nll_loss": nll_loss, "val/rec_loss": rec_loss}
+                    "val/p_loss": p_loss.detach(), "val/rec_loss": rec_loss}
 
         self.log_dict(log_dict, logger=True, prog_bar=False, on_epoch=True)
 
@@ -174,10 +180,13 @@ class PokeAE(pl.LightningModule):
 
     def configure_optimizers(self):
         # optimizers
-        opt_g = Adam(self.parameters(), lr=self.config["training"]["lr"], weight_decay=self.config["training"]["weight_decay"])
+        optimizer = Adam(self.parameters(), lr=self.config["training"]["lr"], weight_decay=self.config["training"]["weight_decay"])
         # schedulers
-        sched_g = lr_scheduler.ReduceLROnPlateau(opt_g, mode="min", factor=.5, patience=1, min_lr=1e-8,
-                                                 threshold=0.0001, threshold_mode='abs')
-        return [opt_g], [{'scheduler': sched_g, 'monitor': "loss-val", "interval": 1, 'reduce_on_plateau': True, 'strict': True}, ]
+        scheduler = lr_scheduler.StepLR(optimizer, step_size=10, gamma=0.5)
+        return [optimizer],[scheduler]
+
+        # sched_g = lr_scheduler.ReduceLROnPlateau(opt_g, mode="min", factor=.5, patience=0, min_lr=1e-8,
+        #                                          threshold=0.1, threshold_mode='rel')
+        # return [opt_g], [{'scheduler': sched_g, 'monitor': "lpips-val", "interval": 1, 'reduce_on_plateau': True, 'strict': True}, ]
         # return ({'optimizer': opt_g,'lr_scheduler':sched_g,'monitor':"loss-val","interval":1,'reduce_on_plateau':True,'strict':True},
         # {'optimizer': opt_d,'lr_scheduler':sched_d,'monitor':"loss-val","interval":1,'reduce_on_plateau':True,'strict':True})

@@ -47,7 +47,7 @@ class SecondStageVideoModelFC(Experiment):
         datamod = StaticDataModule(self.config["data"], datakeys=self.datakeys,debug=self.is_debug)
         datamod.setup()
         n_batches_complete_train = len(datamod.train_dataloader())
-        n_batches_complete_val = len(datamod.dataloader())
+        n_batches_complete_val = len(datamod.val_dataloader())
         n_train_batches = self.config["training"]["max_batches_per_epoch"] if n_batches_complete_train > self.config["training"]["max_batches_per_epoch"] else n_batches_complete_train
         n_val_batches = self.config["training"]["max_val_batches"] if n_batches_complete_val > self.config["training"]["max_val_batches"] else n_batches_complete_val
 

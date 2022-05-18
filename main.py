@@ -84,7 +84,7 @@ if __name__ == '__main__':
     parser.add_argument("-r","--resume", default=False ,action="store_true", help='Whether or not to resume the training.')
     parser.add_argument("-g","--gpus",default=[0], type=int,
                         nargs="+",help="GPU to use.")
-    parser.add_argument("--test",default='none', type=str, choices=['none','fvd','accuracy','samples','diversity', 'kps_acc', 'transfer', 'control_sensitivity'],help="Whether to start in  infer mode?")
+    parser.add_argument("--test",default='none', type=str, choices=['none','fvd','accuracy','samples','diversity', 'kps_acc', 'transfer', 'control_sensitivity', 'realism'],help="Whether to start in  infer mode?")
     parser.add_argument("--last_ckpt",default=False,action="store_true",help="Whether to load the last checkpoint if resuming training.")
     parser.add_argument("--target_version",default=None,type=int,help="The target version for loading checkpoints from.")
 
